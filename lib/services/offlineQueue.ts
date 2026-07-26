@@ -5,7 +5,7 @@
  */
 
 import { db, getDb } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { serverTimestamp } from 'firebase/firestore';
 import { logger } from '@/lib/logging';
 import { createAppError, ErrorCode } from '@/lib/errors';
 import * as offlineStorage from './offlineStorage';
@@ -15,17 +15,36 @@ const SYNC_STATUS_EVENT = OFFLINE_SYNC_STATUS_EVENT;
 
 export interface OfflineQueueItem {
   id: string;
-  type: 'timesheet' | 'sick' | 'break' | 'assignment' | 'timeEntry' | 'signature';
+  /** Nur Typen, für die syncItem() tatsächlich eine Zuordnung kennt. */
+  type: 'timesheet' | 'sick' | 'break' | 'timeEntry' | 'assignment';
   action: 'create' | 'update' | 'delete';
   data: Record<string, unknown>;
   timestamp: number;
   retries: number;
+  /**
+   * Nach erschöpften Versuchen bleibt der Eintrag als "failed" erhalten statt
+   * gelöscht zu werden – sonst verschwinden erfasste Arbeitszeiten spurlos.
+   */
+  failed?: boolean;
+  lastError?: string;
 }
 
 export type OfflineSyncStatus = 'idle' | 'syncing' | 'offline';
 
+const MAX_RETRIES = 3;
+
+/** Firestore-Collection je Queue-Typ. */
+const COLLECTION_BY_TYPE: Record<OfflineQueueItem['type'], string> = {
+  timesheet: 'timesheets',
+  sick: 'times',
+  break: 'times',
+  timeEntry: 'times',
+  assignment: 'assignments',
+};
+
 class OfflineQueueService {
   private queue: OfflineQueueItem[] = [];
+  private failed: OfflineQueueItem[] = [];
   private syncing = false;
 
   constructor() {
@@ -43,7 +62,9 @@ class OfflineQueueService {
 
   private async loadQueue(): Promise<void> {
     try {
-      this.queue = (await offlineStorage.getAllQueueItems()) as OfflineQueueItem[];
+      const alle = (await offlineStorage.getAllQueueItems()) as OfflineQueueItem[];
+      this.queue = alle.filter(item => !item.failed);
+      this.failed = alle.filter(item => item.failed);
       this.notifyStatus();
       if (typeof navigator !== 'undefined' && navigator.onLine && this.queue.length > 0) {
         void this.syncQueue();
@@ -51,6 +72,7 @@ class OfflineQueueService {
     } catch (error) {
       logger.error('Error loading offline queue', error instanceof Error ? error : new Error(String(error)));
       this.queue = [];
+      this.failed = [];
     }
   }
 
@@ -76,6 +98,23 @@ class OfflineQueueService {
     } catch (error) {
       logger.error('Error updating queue item retries', error instanceof Error ? error : new Error(String(error)));
     }
+  }
+
+  /**
+   * Markiert einen Eintrag nach erschöpften Versuchen als dauerhaft
+   * fehlgeschlagen. Er bleibt in IndexedDB erhalten (Datenverlust wäre bei
+   * Arbeitszeiten nicht hinnehmbar) und wird über getStatus() sichtbar.
+   */
+  private async markFailed(item: OfflineQueueItem, error: unknown): Promise<void> {
+    const lastError = error instanceof Error ? error.message : String(error);
+    item.failed = true;
+    item.lastError = lastError;
+    try {
+      await offlineStorage.updateQueueItem(item.id, { failed: true, lastError });
+    } catch (persistError) {
+      logger.error('Error marking queue item as failed', persistError instanceof Error ? persistError : new Error(String(persistError)));
+    }
+    this.failed.push(item);
   }
 
   private setupOnlineListener(): void {
@@ -119,16 +158,49 @@ class OfflineQueueService {
     return this.queue.length;
   }
 
+  /** Anzahl dauerhaft fehlgeschlagener Einträge (bleiben lokal erhalten). */
+  getFailedCount(): number {
+    return this.failed.length;
+  }
+
+  /** Dauerhaft fehlgeschlagene Einträge (für Anzeige/Export). */
+  getFailedItems(): OfflineQueueItem[] {
+    return [...this.failed];
+  }
+
+  /** Fehlgeschlagene Einträge erneut in die Warteschlange stellen. */
+  async retryFailed(): Promise<void> {
+    if (this.failed.length === 0) return;
+    for (const item of this.failed) {
+      item.failed = false;
+      item.retries = 0;
+      item.lastError = undefined;
+      try {
+        await offlineStorage.updateQueueItem(item.id, { failed: false, retries: 0, lastError: null });
+      } catch (error) {
+        logger.error('Error requeueing failed item', error instanceof Error ? error : new Error(String(error)));
+      }
+      this.queue.push(item);
+    }
+    this.failed = [];
+    this.notifyStatus();
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      await this.syncQueue();
+    }
+  }
+
   /** Ob gerade synchronisiert wird */
   isSyncing(): boolean {
     return this.syncing;
   }
 
   /** Status für UI (Sync-Status-Indikator) */
-  getStatus(): { pendingCount: number; isSyncing: boolean; status: OfflineSyncStatus } {
-    const status: OfflineSyncStatus = this.syncing ? 'syncing' : !navigator.onLine ? 'offline' : 'idle';
+  getStatus(): { pendingCount: number; failedCount: number; isSyncing: boolean; status: OfflineSyncStatus } {
+    const online = typeof navigator === 'undefined' ? true : navigator.onLine;
+    const status: OfflineSyncStatus = this.syncing ? 'syncing' : !online ? 'offline' : 'idle';
     return {
       pendingCount: this.queue.length,
+      failedCount: this.failed.length,
       isSyncing: this.syncing,
       status,
     };
@@ -161,16 +233,22 @@ class OfflineQueueService {
         } catch (error) {
           logger.error(`Error syncing item ${item.id}`, error instanceof Error ? error : new Error(String(error)));
           item.retries += 1;
-          if (item.retries < 3) {
+          if (item.retries < MAX_RETRIES) {
             failedItems.push(item);
             await this.updatePersistedRetries(item.id, item.retries);
           } else {
-            await this.removePersistedItem(item.id);
+            // NICHT löschen – erfasste Arbeitszeit bleibt als "failed" erhalten.
+            await this.markFailed(item, error);
           }
         }
       }
 
-      this.queue = failedItems;
+      // Einträge, die WÄHREND des Syncs dazugekommen sind, bleiben erhalten;
+      // vorher wurden sie durch `this.queue = failedItems` aus dem Speicher
+      // geworfen und tauchten erst nach einem Neuladen wieder auf.
+      const verarbeitet = new Set(itemsToSync.map(i => i.id));
+      const waehrendSyncNeu = this.queue.filter(i => !verarbeitet.has(i.id));
+      this.queue = [...failedItems, ...waehrendSyncNeu];
       if (syncedIds.length > 0) {
         logger.info(`Successfully synced ${syncedIds.length} items`);
       }
@@ -191,72 +269,49 @@ class OfflineQueueService {
       );
     }
 
-    // Import Firestore functions based on action type
-    const { doc, updateDoc, deleteDoc } = await import('firebase/firestore');
+    const collectionName = COLLECTION_BY_TYPE[item.type];
+    if (!collectionName) {
+      throw createAppError(
+        new Error(`Unknown queue item type: ${item.type}`),
+        ErrorCode.VALIDATION_INVALID_FORMAT,
+        { component: 'offlineQueueService', action: 'syncItem' }
+      );
+    }
 
-    switch (item.type) {
-      case 'timesheet':
-        if (item.action === 'create') {
-          await addDoc(collection(getDb(), 'timesheets'), {
-            ...item.data,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-            syncedFromOffline: true,
-          });
-        } else if (item.action === 'update' && item.data.id) {
-          const { id: _docId, ...updatePayload } = item.data;
-          await updateDoc(doc(getDb(), 'timesheets', _docId as string), {
-            ...updatePayload,
-            updatedAt: serverTimestamp(),
-            syncedFromOffline: true,
-          });
-        } else if (item.action === 'delete' && item.data.id) {
-          await deleteDoc(doc(getDb(), 'timesheets', item.data.id as string));
-        }
-        break;
-      case 'sick':
-      case 'break':
-        if (item.action === 'create') {
-          await addDoc(collection(getDb(), 'times'), {
-            ...item.data,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-            syncedFromOffline: true,
-          });
-        } else if (item.action === 'update' && item.data.id) {
-          await updateDoc(doc(getDb(), 'times', item.data.id as string), {
-            ...item.data,
-            updatedAt: serverTimestamp(),
-            syncedFromOffline: true,
-          });
-        } else if (item.action === 'delete' && item.data.id) {
-          await deleteDoc(doc(getDb(), 'times', item.data.id as string));
-        }
-        break;
-      case 'assignment':
-        if (item.action === 'create') {
-          await addDoc(collection(getDb(), 'assignments'), {
-            ...item.data,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-            syncedFromOffline: true,
-          });
-        } else if (item.action === 'update' && item.data.id) {
-          await updateDoc(doc(getDb(), 'assignments', item.data.id as string), {
-            ...item.data,
-            updatedAt: serverTimestamp(),
-            syncedFromOffline: true,
-          });
-        } else if (item.action === 'delete' && item.data.id) {
-          await deleteDoc(doc(getDb(), 'assignments', item.data.id as string));
-        }
-        break;
-      default:
-        throw createAppError(
-          new Error(`Unknown queue item type: ${item.type}`),
-          ErrorCode.VALIDATION_INVALID_FORMAT,
-          { component: 'offlineQueueService', action: 'syncItem' }
-        );
+    const { doc, setDoc, updateDoc, deleteDoc } = await import('firebase/firestore');
+
+    if (item.action === 'create') {
+      // IDEMPOTENT: Die Queue-Item-ID ist zugleich die Dokument-ID. Bricht der
+      // Browser nach dem Schreiben, aber vor dem Entfernen aus IndexedDB ab,
+      // überschreibt der nächste Sync dasselbe Dokument – vorher legte addDoc()
+      // bei jedem Wiederholungslauf einen zusätzlichen Eintrag an (doppelt
+      // erfasste Arbeitszeiten). Die ID ist außerdem der Wert, den create()
+      // zurückgegeben hat, sodass ein späteres update() denselben Beleg trifft.
+      await setDoc(
+        doc(getDb(), collectionName, item.id),
+        {
+          ...item.data,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          syncedFromOffline: true,
+        },
+        { merge: true }
+      );
+      return;
+    }
+
+    if (item.action === 'update' && item.data.id) {
+      const { id: docId, ...updatePayload } = item.data;
+      await updateDoc(doc(getDb(), collectionName, docId as string), {
+        ...updatePayload,
+        updatedAt: serverTimestamp(),
+        syncedFromOffline: true,
+      });
+      return;
+    }
+
+    if (item.action === 'delete' && item.data.id) {
+      await deleteDoc(doc(getDb(), collectionName, item.data.id as string));
     }
   }
 

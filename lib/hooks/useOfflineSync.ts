@@ -5,6 +5,8 @@ import { offlineQueueService, OFFLINE_SYNC_STATUS_EVENT, type OfflineSyncStatus 
 
 export interface OfflineSyncState {
   pendingCount: number;
+  /** Einträge, deren Sync endgültig fehlgeschlagen ist (lokal erhalten). */
+  failedCount: number;
   isSyncing: boolean;
   status: OfflineSyncStatus;
 }

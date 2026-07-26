@@ -1,15 +1,37 @@
 'use client';
 
 import { Chip, Tooltip, CircularProgress } from '@mui/material';
-import { CloudOff, CheckCircle, Schedule } from '@mui/icons-material';
+import { CloudOff, CheckCircle, Schedule, ErrorOutline } from '@mui/icons-material';
 import { useOfflineSync } from '@/lib/hooks/useOfflineSync';
+import { offlineQueueService } from '@/lib/services/offlineQueue';
 
 /**
  * Zeigt den Offline-/Sync-Status der Zeiterfassung (IndexedDB-Queue).
  * Nutzbar auf der Zeiterfassungs-Seite oder im Layout.
  */
 export function SyncStatusIndicator() {
-  const { pendingCount, isSyncing, status } = useOfflineSync();
+  const { pendingCount, failedCount, isSyncing, status } = useOfflineSync();
+
+  // Endgültig fehlgeschlagene Einträge zuerst melden: Die Daten sind lokal noch
+  // vorhanden, gehen aber ohne Hinweis niemandem auf – ein Klick stellt sie
+  // erneut in die Warteschlange.
+  if (failedCount > 0 && !isSyncing) {
+    return (
+      <Tooltip
+        title={`${failedCount} Eintrag/Einträge konnten nicht synchronisiert werden und sind nur lokal gespeichert. Klicken, um es erneut zu versuchen.`}
+      >
+        <Chip
+          size="small"
+          icon={<ErrorOutline />}
+          label={`${failedCount} nicht synchronisiert`}
+          color="error"
+          variant="outlined"
+          onClick={() => void offlineQueueService.retryFailed()}
+          aria-label={`${failedCount} nicht synchronisiert – erneut versuchen`}
+        />
+      </Tooltip>
+    );
+  }
 
   if (status === 'offline') {
     return (

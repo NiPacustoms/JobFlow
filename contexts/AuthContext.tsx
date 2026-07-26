@@ -2,7 +2,7 @@
 
 import { User } from '@/lib/types';
 import { logger } from '@/lib/logging';
-import { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { User as FirebaseUser } from 'firebase/auth';
 import { signInWithEmailAndPassword, signOut, sendPasswordResetEmail, sendEmailVerification } from 'firebase/auth';
 import { getAuthSafe } from '@/lib/firebase';
@@ -37,6 +37,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const isE2ETestMode = typeof window !== 'undefined' && window.__E2E_TEST_MODE__ === true;
+  /**
+   * Laufende Nummer des aktuellen Auth-Vorgangs. signIn() und der
+   * onAuthStateChanged-Listener laden das Profil beide asynchron; ohne diese
+   * Sequenz konnte die langsamere (ältere) Kette die neuere überschreiben –
+   * etwa mit einem Claims-Fallback-Profil statt der echten Firestore-Daten,
+   * oder nach schnellem Abmelden/Anmelden mit dem Profil des Vor-Nutzers.
+   */
+  const authSequenceRef = useRef(0);
+  const beginAuthSequence = useCallback(() => {
+    authSequenceRef.current += 1;
+    return authSequenceRef.current;
+  }, []);
+  const isCurrentSequence = useCallback((sequence: number) => authSequenceRef.current === sequence, []);
 
   const handleLoadingTimeout = useCallback(() => {
     setLoading((prev) => {
@@ -72,6 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const unsubscribe = authInstance.onAuthStateChanged((fbUser: FirebaseUser | null) => {
+      const sequence = beginAuthSequence();
       setAuthError(null);
       if (fbUser) {
         // Sofort FirebaseUser setzen, aber loading bleibt true bis Profil+Rolle geladen
@@ -83,20 +97,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               AuthService.setSessionCookie(fbUser),
               authUserService.loadUserForAuth(fbUser),
             ]);
+            if (!isCurrentSequence(sequence)) return;
             if (loadedUser) {
               setUser(loadedUser);
             } else {
               // Nur als Fallback wenn Firestore nicht erreichbar: Rolle aus Claims lesen
-              setUser(await authUserService.buildFallbackUserWithClaims(fbUser));
+              const fallback = await authUserService.buildFallbackUserWithClaims(fbUser);
+              if (!isCurrentSequence(sequence)) return;
+              setUser(fallback);
             }
           } catch (error) {
+            if (!isCurrentSequence(sequence)) return;
             const msg = error instanceof Error ? error.message : String(error);
             setAuthError(msg || 'Sitzung konnte nicht eingerichtet werden.');
             logger.error('Session/User fehlgeschlagen', error instanceof Error ? error : new Error(String(error)));
             // Im Fehlerfall: Fallback-User mit Claims-Rolle setzen
-            setUser(await authUserService.buildFallbackUserWithClaims(fbUser));
+            const fallback = await authUserService.buildFallbackUserWithClaims(fbUser);
+            if (!isCurrentSequence(sequence)) return;
+            setUser(fallback);
           } finally {
-            setLoading(false);
+            if (isCurrentSequence(sequence)) setLoading(false);
           }
         })();
       } else {
@@ -108,7 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, [isE2ETestMode]);
+  }, [isE2ETestMode, beginAuthSequence, isCurrentSequence]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     setAuthError(null);
@@ -160,6 +180,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logger.info('Firebase authentication successful', {}, { email });
       const fbUser = authInstance.currentUser;
       if (fbUser) {
+        // Eigene Sequenz: Der onAuthStateChanged-Listener läuft parallel und
+        // würde sonst mit seinem (evtl. älteren) Ergebnis das hier geladene
+        // Profil überschreiben.
+        const sequence = beginAuthSequence();
         try {
           const token = await fbUser.getIdToken();
           const [_, firestoreUser] = await Promise.all([
@@ -169,14 +193,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const loadedUser = firestoreUser
             ? await authUserService.applyClaimsToUser(fbUser, firestoreUser)
             : null;
-          setUser(loadedUser ?? await authUserService.buildFallbackUserWithClaims(fbUser));
+          const resolvedUser =
+            loadedUser ?? (await authUserService.buildFallbackUserWithClaims(fbUser));
+          if (!isCurrentSequence(sequence)) return;
+          setUser(resolvedUser);
           setFirebaseUser(fbUser);
         } catch (sessionError) {
-          const msg = sessionError instanceof Error ? sessionError.message : String(sessionError);
-          setAuthError(msg || 'Sitzung konnte nicht eingerichtet werden.');
-          setUser(null);
-          setFirebaseUser(null);
-          setLoading(false);
+          if (isCurrentSequence(sequence)) {
+            const msg = sessionError instanceof Error ? sessionError.message : String(sessionError);
+            setAuthError(msg || 'Sitzung konnte nicht eingerichtet werden.');
+            setUser(null);
+            setFirebaseUser(null);
+            setLoading(false);
+          }
           throw sessionError;
         }
       }
@@ -190,9 +219,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         'Anmeldung fehlgeschlagen';
       throw new Error(errorMessage);
     }
-  }, [isE2ETestMode]);
+  }, [isE2ETestMode, beginAuthSequence, isCurrentSequence]);
 
   const signOutUser = useCallback(async () => {
+    // Entwertet alle laufenden Profil-Ladevorgänge, damit ein spät
+    // eintreffendes Ergebnis nach dem Abmelden keinen Nutzer mehr setzt.
+    beginAuthSequence();
     try {
       if (process.env.NODE_ENV === 'test' || isE2ETestMode) {
         setUser(null);
@@ -208,7 +240,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error: unknown) {
       throw new Error((error as Error).message || 'Logout fehlgeschlagen');
     }
-  }, [isE2ETestMode]);
+  }, [isE2ETestMode, beginAuthSequence]);
 
   const updateUser = useCallback(async (data: Partial<User>) => {
     if (!user) throw new Error('No user logged in');

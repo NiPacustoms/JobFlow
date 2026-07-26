@@ -3,6 +3,7 @@ import { ValidationError, ErrorCode, createAppError } from '@/lib/errors';
 import { offlineQueueService } from './offlineQueue';
 import { getCompanyIdFromAuth } from '@/lib/utils/companyId';
 import { logger } from '@/lib/logging';
+import { computeNetHours } from './timesheets/computeNetHours';
 
 // Timesheet Interface - sollte mit lib/types/index.ts kompatibel sein
 // Verwende das Timesheet aus lib/types für Konsistenz
@@ -403,17 +404,8 @@ export const timesheetService = {
         throw new Error('No companyId found for timesheet');
       }
 
-      // Calculate total hours
-      const startTime = new Date(`2000-01-01T${data.startTime}`);
-      const endTime = new Date(`2000-01-01T${data.endTime}`);
-
-      // Handle overnight shifts
-      let totalMinutes = (endTime.getTime() - startTime.getTime()) / (1000 * 60);
-      if (totalMinutes <= 0) {
-        totalMinutes += 24 * 60; // Add 24 hours for overnight
-      }
-
-      const totalHours = (totalMinutes - data.breakMinutes) / 60;
+      // Stundenberechnung inkl. Validierung (verhindert negative/NaN-Werte).
+      const totalHours = computeNetHours(data.startTime, data.endTime, data.breakMinutes);
 
       const timesheetData = {
         userId: userId,
@@ -422,7 +414,7 @@ export const timesheetService = {
         startTime: data.startTime,
         endTime: data.endTime,
         breakMinutes: data.breakMinutes,
-        totalHours: Math.round(totalHours * 100) / 100, // Round to 2 decimal places
+        totalHours,
         notes: data.notes,
         facilityId: data.facilityId,
         station: data.station,
@@ -512,16 +504,7 @@ export const timesheetService = {
         const breakMinutes =
           data.breakMinutes !== undefined ? data.breakMinutes : (currentData.breakMinutes ?? 0);
 
-        const start = new Date(`2000-01-01T${startTime}`);
-        const end = new Date(`2000-01-01T${endTime}`);
-
-        let totalMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-        if (totalMinutes <= 0) {
-          totalMinutes += 24 * 60;
-        }
-
-        const totalHours = (totalMinutes - breakMinutes) / 60;
-        updateData.totalHours = Math.round(totalHours * 100) / 100;
+        updateData.totalHours = computeNetHours(startTime, endTime, breakMinutes);
       }
 
       await updateDoc(timesheetRef, updateData);

@@ -102,6 +102,7 @@ import {
   limit,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   updateDoc,
   where,
@@ -1142,68 +1143,74 @@ return assignments;
   ): Promise<void> {
     try {
       const assignmentRef = doc(getDb(), COLLECTION_NAME, assignmentId);
-      const assignmentDoc = await getDoc(assignmentRef);
 
-      if (!assignmentDoc.exists()) {
-        throw new Error('Assignment not found');
-      }
+      // Read-modify-write auf zwei Arrays (relievingSignatures + collectedDates).
+      // Ohne Transaktion überschreiben zwei zeitgleiche Signaturen (z. B. zwei
+      // Tage kurz hintereinander oder zwei Geräte) einander – eine Unterschrift
+      // ginge verloren und der Nachweis würde nie vollständig.
+      await runTransaction(getDb(), async transaction => {
+        const assignmentDoc = await transaction.get(assignmentRef);
+        if (!assignmentDoc.exists()) {
+          throw new Error('Assignment not found');
+        }
 
-      const currentData = assignmentDoc.data();
-      const existingSignatures = (currentData.relievingSignatures as Array<{
-        date: string;
-        signerName: string;
-        signerRole?: string;
-        signatureUrl: string;
-        signedAt: Date | { toDate: () => Date };
-        timesheetId?: string;
-        verifiedTimes?: {
-          startTime: string;
-          endTime: string;
-          breakMinutes: number;
-          totalHours: number;
+        const currentData = assignmentDoc.data();
+        const existingSignatures = (currentData.relievingSignatures as Array<{
+          date: string;
+          signerName: string;
+          signerRole?: string;
+          signatureUrl: string;
+          signedAt: Date | { toDate: () => Date };
+          timesheetId?: string;
+          verifiedTimes?: {
+            startTime: string;
+            endTime: string;
+            breakMinutes: number;
+            totalHours: number;
+          };
+        }>) || [];
+
+        // Check if signature for this date already exists
+        const existingIndex = existingSignatures.findIndex(sig => sig.date === signatureData.date);
+
+        const newSignature = {
+          date: signatureData.date,
+          signerName: signatureData.signerName,
+          signerRole: signatureData.signerRole,
+          signatureUrl: signatureData.signatureUrl,
+          signedAt: signatureData.signedAt,
+          timesheetId: signatureData.timesheetId,
+          verifiedTimes: signatureData.verifiedTimes,
         };
-      }>) || [];
 
-      // Check if signature for this date already exists
-      const existingIndex = existingSignatures.findIndex(sig => sig.date === signatureData.date);
-      
-      const newSignature = {
-        date: signatureData.date,
-        signerName: signatureData.signerName,
-        signerRole: signatureData.signerRole,
-        signatureUrl: signatureData.signatureUrl,
-        signedAt: signatureData.signedAt,
-        timesheetId: signatureData.timesheetId,
-        verifiedTimes: signatureData.verifiedTimes,
-      };
+        let updatedSignatures: typeof existingSignatures;
+        if (existingIndex >= 0) {
+          // Update existing signature
+          updatedSignatures = [...existingSignatures];
+          updatedSignatures[existingIndex] = newSignature;
+        } else {
+          // Add new signature
+          updatedSignatures = [...existingSignatures, newSignature];
+        }
 
-      let updatedSignatures: typeof existingSignatures;
-      if (existingIndex >= 0) {
-        // Update existing signature
-        updatedSignatures = [...existingSignatures];
-        updatedSignatures[existingIndex] = newSignature;
-      } else {
-        // Add new signature
-        updatedSignatures = [...existingSignatures, newSignature];
-      }
+        // Update collected dates in signature schedule
+        const collectedDates = [...((currentData.signatureSchedule?.collectedDates as string[]) || [])];
+        if (!collectedDates.includes(signatureData.date)) {
+          collectedDates.push(signatureData.date);
+        }
 
-      // Update collected dates in signature schedule
-      const collectedDates = (currentData.signatureSchedule?.collectedDates as string[]) || [];
-      if (!collectedDates.includes(signatureData.date)) {
-        collectedDates.push(signatureData.date);
-      }
+        // Update signature schedule
+        const signatureSchedule = currentData.signatureSchedule || {};
+        const updatedSchedule = {
+          ...signatureSchedule,
+          collectedDates,
+        };
 
-      // Update signature schedule
-      const signatureSchedule = currentData.signatureSchedule || {};
-      const updatedSchedule = {
-        ...signatureSchedule,
-        collectedDates,
-      };
-
-      await updateDoc(assignmentRef, {
-        relievingSignatures: updatedSignatures,
-        signatureSchedule: updatedSchedule,
-        updatedAt: serverTimestamp(),
+        transaction.update(assignmentRef, {
+          relievingSignatures: updatedSignatures,
+          signatureSchedule: updatedSchedule,
+          updatedAt: serverTimestamp(),
+        });
       });
 
       // Check if all signatures are collected and generate PDF if so
