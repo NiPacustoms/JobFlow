@@ -852,18 +852,44 @@ class DocumentGenerationService {
     y += 6;
     const sigLineY = y + 16;
     if (data.signatureDataUrl) {
-      try {
-        const img = new Image();
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve();
-          img.onerror = reject;
+      const maxWidth = 60;
+      const maxHeight = 22;
+      // Seitenverhältnis ermitteln – mit Zeitgrenze. Feuert weder onload noch
+      // onerror (defekte Data-URL, bestimmte WebView-Umgebungen), würde die
+      // PDF-Erzeugung sonst UNBEGRENZT hängen; der Mitarbeiter wartet dann
+      // ewig auf seine Bestätigung.
+      const masse = await new Promise<{ w: number; h: number } | null>(resolve => {
+        let erledigt = false;
+        const fertig = (wert: { w: number; h: number } | null) => {
+          if (erledigt) return;
+          erledigt = true;
+          resolve(wert);
+        };
+        const timer = setTimeout(() => fertig(null), 3000);
+        try {
+          const img = new Image();
+          img.onload = () => {
+            clearTimeout(timer);
+            fertig(img.width && img.height ? { w: img.width, h: img.height } : null);
+          };
+          img.onerror = () => {
+            clearTimeout(timer);
+            fertig(null);
+          };
           img.src = data.signatureDataUrl!;
-        });
-        const maxWidth = 60;
-        const maxHeight = 22;
-        const ratio = Math.min(maxWidth / img.width, maxHeight / img.height);
-        const imgW = img.width * ratio;
-        const imgH = img.height * ratio;
+        } catch {
+          clearTimeout(timer);
+          fertig(null);
+        }
+      });
+
+      // Auch ohne ermittelte Maße wird die Unterschrift eingebettet (mit
+      // Standardgröße) – sie darf aus einem unterschriebenen Dokument nicht
+      // stillschweigend verschwinden.
+      const ratio = masse ? Math.min(maxWidth / masse.w, maxHeight / masse.h) : 1;
+      const imgW = masse ? masse.w * ratio : maxWidth;
+      const imgH = masse ? masse.h * ratio : maxHeight;
+      try {
         doc.addImage(data.signatureDataUrl, 'PNG', m, sigLineY - imgH - 1, imgW, imgH);
       } catch (error) {
         logger.error('Fehler beim Einfügen der Unterschrift', error instanceof Error ? error : new Error(String(error)));
