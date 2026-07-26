@@ -1,5 +1,6 @@
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions/v1';
+import { releaseShiftCapacity } from './utils/shiftCapacity';
 
 const db = admin.firestore();
 
@@ -71,15 +72,14 @@ export const unassignShift = functions.https.onCall(async (data, context) => {
         });
       }
 
-      // 5. Shift-Kapazität aktualisieren (Status: 'open' | 'filled' | 'cancelled').
-      // 'requested'-Anfragen haben nie Kapazität belegt → Count nicht dekrementieren.
-      const hadCountedCapacity = assignment.status !== 'requested';
-      const capacity = shift.capacity || 1;
-      const newAssignedCount = hadCountedCapacity
-        ? Math.max(0, (shift.assignedCount || 0) - 1)
-        : (shift.assignedCount || 0);
-      const newStatus =
-        shift.status === 'cancelled' ? 'cancelled' : newAssignedCount >= capacity ? 'filled' : 'open';
+      // 5. Shift-Kapazität aktualisieren (gemeinsame Regel, siehe utils/shiftCapacity).
+      // Nur belegende Status ('assigned' | 'accepted' | 'pending') dekrementieren:
+      // Ein bereits abgelehntes oder nur angefragtes Assignment hat keinen Platz
+      // belegt – es erneut abzuziehen würde den Zähler dauerhaft verfälschen.
+      const { assignedCount: newAssignedCount, status: newStatus } = releaseShiftCapacity(
+        shift,
+        assignment.status
+      );
 
       transaction.update(shiftRef, {
         assignedCount: newAssignedCount,

@@ -5,7 +5,16 @@ if (!admin.apps.length) {
   admin.initializeApp();
 }
 
-export const exportUserData = functions.https.onCall(async (data, context) => {
+/**
+ * Reine Handler-Funktion mit injizierbarer Firestore-Instanz.
+ * Getrennt vom onCall-Wrapper, damit die Mandanten- und Personenfilter ohne
+ * Emulator testbar sind (siehe functions/test/dsr.test.ts).
+ */
+export async function exportUserDataHandler(
+  data: { uid?: string } | undefined,
+  context: functions.https.CallableContext,
+  firestore?: admin.firestore.Firestore
+) {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
   }
@@ -16,7 +25,7 @@ export const exportUserData = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('permission-denied', 'Missing company context');
   }
 
-  const db = admin.firestore();
+  const db = firestore ?? admin.firestore();
 
   const collections = [
     { name: 'users', field: 'uid', queryField: admin.firestore.FieldPath.documentId() },
@@ -47,6 +56,10 @@ export const exportUserData = functions.https.onCall(async (data, context) => {
   }
 
   return { uid: targetUid, companyId, exportedAt: new Date().toISOString(), data: result };
-});
+}
+
+export const exportUserData = functions.https.onCall(async (data, context) =>
+  exportUserDataHandler(data, context)
+);
 
 

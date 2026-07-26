@@ -132,3 +132,4 @@ y/
 *-sa.json
 gcloud-*.json
 application_default_credentials.json
+coverage-functions/

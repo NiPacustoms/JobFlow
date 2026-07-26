@@ -6,7 +6,15 @@ if (!admin.apps.length) {
 }
 
 // Best-effort DSGVO-Löschung: markiert Daten als deleted und entfernt personenbezogene Felder, wo möglich löscht sie hart.
-export const deleteUserData = functions.https.onCall(async (data, context) => {
+/**
+ * Reine Handler-Funktion mit injizierbarer Firestore-Instanz – siehe
+ * exportUserDataHandler. Der onCall-Wrapper darunter bleibt unverändert.
+ */
+export async function deleteUserDataHandler(
+  data: { uid?: string; hardDelete?: boolean } | undefined,
+  context: functions.https.CallableContext,
+  firestore?: admin.firestore.Firestore
+) {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
   }
@@ -18,7 +26,7 @@ export const deleteUserData = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError('permission-denied', 'Missing company context');
   }
 
-  const db = admin.firestore();
+  const db = firestore ?? admin.firestore();
   const batch = db.batch();
 
   // users (hard delete)
@@ -81,6 +89,10 @@ export const deleteUserData = functions.https.onCall(async (data, context) => {
   }
 
   return { uid: targetUid, companyId, hardDelete, deletedAt: new Date().toISOString() };
-});
+}
+
+export const deleteUserData = functions.https.onCall(async (data, context) =>
+  deleteUserDataHandler(data, context)
+);
 
 
