@@ -9,10 +9,11 @@ unterschriebener Nachweis ergibt, braucht einen.
 
 | Ebene | Befehl | Umfang |
 | --- | --- | --- |
-| Unit / Service (Client) | `npm run test:unit` | 452 Tests, jsdom, Firestore gemockt |
+| Unit / Service (Client) | `npm run test:unit` | 831 Tests, jsdom, Firestore gemockt |
 | Unit (Cloud Functions) | `npm run test:functions` | 30 Tests, Node, Admin-SDK gemockt |
 | Firestore-Rules | `npm run test:rules` | Mandantenisolation, Rechte-Eskalation, Timesheet-Create |
-| End-to-End | `npm run test:e2e` | 142 Playwright-Tests (chromium/firefox) |
+| End-to-End | `npm run test:e2e` | 34 Playwright-Tests (Mock-Auth) |
+| End-to-End (Backend) | `npm run test:e2e:backend` | 108 Tests, braucht befülltes Firebase-Projekt |
 
 `npm run test:all` führt Unit + Functions + Rules nacheinander aus.
 `npm run test:unit:coverage` erzeugt zusätzlich den Abdeckungsbericht.
@@ -35,7 +36,7 @@ unbemerkt zurückgehen.
 | `lib/utils/shiftStatus.ts`, `format.ts`, `authz.ts`, `sanitize.ts`, `dataUrl.ts` | 100 % |
 | `lib/validations/**` | 90 %+ – jede Formular-/API-Validierung |
 
-Der globale Wert (aktuell ~20 % Statements) ist bewusst niedriger: Er umfasst
+Der globale Wert (aktuell ~44 % Statements, ~63 % Branches) ist bewusst niedriger: Er umfasst
 auch reine Firestore-Verdrahtung und React-Hooks, deren Verhalten über die
 E2E-Suite und die Rules-Tests geprüft wird. Er ist als Ratsche gesetzt und darf
 nur nach oben angepasst werden.
@@ -67,6 +68,19 @@ von Timesheets an die eigene `userId`.
 
 **Kapazität der Schichten** – Freigabe eines Platzes, keine Doppel-Freigabe bei
 bereits abgelehnten Einsätzen, abgesagte Schichten bleiben abgesagt.
+
+## Gemeinsames Mock-Gerüst
+
+`lib/services/__tests__/helpers/firestoreHarness.ts` stellt einen konfigurierbaren
+Firestore-Mock bereit (Antworten für getDocs/getDoc setzen, Schreibzugriffe und
+Query-Constraints auslesen). Neue Service-Tests bauen darauf auf, statt das
+Mocking je Datei zu wiederholen:
+
+```ts
+vi.mock('firebase/firestore', () => firestoreModuleMock());
+harness.setDocs([{ id: 't1', data: { … } }]);
+expect(harness.hatWhere('companyId', 'firmaA')).toBe(true);
+```
 
 ## Regressionstests
 

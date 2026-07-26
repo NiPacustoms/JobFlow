@@ -27,6 +27,24 @@ const getTimesheetNumericField = (
   return typeof value === 'number' ? value : 0;
 };
 
+/**
+ * Robuste Datumsermittlung eines Nachweises.
+ *
+ * Vorher wurde direkt `new Date(timesheet.startDate).toISOString()` aufgerufen.
+ * Fehlt startDate (z. B. bei einem optimistisch eingefügten oder offline
+ * erfassten Eintrag), ist das Ergebnis "Invalid Date" und toISOString() wirft
+ * einen RangeError – die komplette Verlaufsseite bleibt dann leer.
+ */
+function nachweisDatum(timesheet: { startDate?: Date | string; date?: Date | string }): Date {
+  const kandidaten = [timesheet.startDate, timesheet.date];
+  for (const kandidat of kandidaten) {
+    if (!kandidat) continue;
+    const d = kandidat instanceof Date ? kandidat : new Date(kandidat);
+    if (!Number.isNaN(d.getTime())) return d;
+  }
+  return new Date(0);
+}
+
 export const useTimesheetHistory = (filters: TimesheetHistoryFilters = {}) => {
   const { user } = useAuth();
 
@@ -72,7 +90,7 @@ export const useTimesheetHistory = (filters: TimesheetHistoryFilters = {}) => {
     const holidayHours = timesheets.reduce((sum, ts) => sum + (ts.holidayHours || 0), 0);
 
     // Eindeutige Arbeitstage
-    const uniqueDays = new Set(timesheets.map(ts => new Date(ts.startDate).toDateString())).size;
+    const uniqueDays = new Set(timesheets.map(ts => nachweisDatum(ts).toDateString())).size;
     const workingDays = uniqueDays;
     const totalDays = timesheets.length;
 
@@ -86,14 +104,14 @@ export const useTimesheetHistory = (filters: TimesheetHistoryFilters = {}) => {
 
     const firstWeekHours = timesheets
       .filter(ts => {
-        const date = new Date(ts.startDate);
+        const date = nachweisDatum(ts);
         return date >= twoWeeksAgo && date < oneWeekAgo;
       })
       .reduce((sum, ts) => sum + (ts.totalHours || 0), 0);
 
     const secondWeekHours = timesheets
       .filter(ts => {
-        const date = new Date(ts.startDate);
+        const date = nachweisDatum(ts);
         return date >= oneWeekAgo;
       })
       .reduce((sum, ts) => sum + (ts.totalHours || 0), 0);
@@ -122,7 +140,7 @@ export const useTimesheetHistory = (filters: TimesheetHistoryFilters = {}) => {
     const grouped: { [key: string]: Timesheet[] } = {};
     
     timesheets.forEach(timesheet => {
-      const date = new Date(timesheet.startDate);
+      const date = nachweisDatum(timesheet);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       
       if (!grouped[monthKey]) {
@@ -139,7 +157,7 @@ export const useTimesheetHistory = (filters: TimesheetHistoryFilters = {}) => {
     const grouped: { [key: string]: Timesheet[] } = {};
     
     timesheets.forEach(timesheet => {
-      const date = new Date(timesheet.startDate);
+      const date = nachweisDatum(timesheet);
       const weekStart = new Date(date);
       weekStart.setDate(date.getDate() - date.getDay()); // Sonntag
       const weekKey = weekStart.toISOString().split('T')[0];
@@ -158,7 +176,7 @@ export const useTimesheetHistory = (filters: TimesheetHistoryFilters = {}) => {
     const grouped: { [key: string]: Timesheet[] } = {};
     
     timesheets.forEach(timesheet => {
-      const date = new Date(timesheet.startDate);
+      const date = nachweisDatum(timesheet);
       const dayKey = date.toISOString().split('T')[0];
       
       if (!grouped[dayKey]) {
