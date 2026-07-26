@@ -51,6 +51,8 @@ export interface Timesheet {
   facilitySignedBy?: string;
   facilityConfirmationStatus?: 'performed' | 'aborted' | 'no-show';
   facilitySignerName?: string;
+  /** Anmerkung der Einrichtung zur Tagesbestätigung. */
+  facilityNotes?: string;
 }
 
 export interface TimesheetForm {

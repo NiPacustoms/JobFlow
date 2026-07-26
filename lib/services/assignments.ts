@@ -65,6 +65,9 @@ export interface Assignment {
   pdfGenerated?: boolean;
   pdfGeneratedAt?: Date;
   pdfUrl?: string;
+  /** Einsatzmitteilung aus dem Mitarbeiter-Formular (getrennt von pdfUrl). */
+  formPdfUrl?: string;
+  formPdfGeneratedAt?: Date;
   pdfSentTo?: {
     employee: boolean;
     admin: boolean;
@@ -1101,6 +1104,8 @@ return assignments;
       pdfGenerated: data.pdfGenerated as boolean | undefined,
       pdfGeneratedAt: (data.pdfGeneratedAt as { toDate?: () => Date } | undefined)?.toDate?.(),
       pdfUrl: data.pdfUrl as string | undefined,
+      formPdfUrl: data.formPdfUrl as string | undefined,
+      formPdfGeneratedAt: (data.formPdfGeneratedAt as { toDate?: () => Date } | undefined)?.toDate?.(),
       pdfSentTo: data.pdfSentTo as { employee: boolean; admin: boolean; facility: boolean } | undefined,
       formStatus: data.formStatus as Assignment['formStatus'],
       formPlace: data.formPlace as string | undefined,
@@ -1222,10 +1227,19 @@ return assignments;
         return;
       }
 
-      // Check if all signatures collected inline
+      // Check if all signatures collected inline.
+      // WICHTIG: echte Teilmengen-Prüfung statt Längenvergleich – eine Signatur für
+      // einen NICHT geforderten Tag hätte sonst einen fehlenden Pflichttag
+      // "aufgefüllt" und den Nachweis vorzeitig als vollständig gemeldet.
+      const toDateKey = (value: Date | string): string => {
+        const d = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      };
       const areAllSignaturesCollected = (schedule: typeof assignment.signatureSchedule) => {
         if (!schedule?.requiredDates?.length) return true;
-        return schedule.collectedDates?.length === schedule.requiredDates.length;
+        const collected = new Set((schedule.collectedDates || []).map(toDateKey));
+        return schedule.requiredDates.every(required => collected.has(toDateKey(required)));
       };
 
       const allRelievingSignaturesCollected = areAllSignaturesCollected(assignment.signatureSchedule);

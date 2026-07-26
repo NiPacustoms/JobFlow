@@ -80,9 +80,13 @@ service cloud.firestore {
       );
       // Erstellen: Eigene Dokumente ODER Admin derselben Company.
       // Selbst-Anlage darf sich nicht selbst zum Admin machen: role muss fehlen oder 'nurse' sein.
+      // Und sie darf keine companyId frei wählen – sonst könnte sich ein Account in eine
+      // fremde Company "einschreiben" und über belongsToSameCompany fremde Daten lesen.
+      // Reguläre Anlage (Einladung/Registrierung) läuft serverseitig über das Admin SDK.
       allow create: if isAuthenticated() && (
         (request.auth.uid == uid &&
-         (!('role' in request.resource.data) || request.resource.data.role == 'nurse')) ||
+         (!('role' in request.resource.data) || request.resource.data.role == 'nurse') &&
+         (!('companyId' in request.resource.data) || request.resource.data.companyId == null)) ||
         (hasRole('admin') && creatingForSameCompany(request.resource.data.companyId))
       );
       // Aktualisieren: Eigenes Dokument (ohne Änderung rechte-relevanter Felder)
@@ -243,11 +247,15 @@ service cloud.firestore {
           belongsToSameCompany(resource.data.companyId)
         ))
       );
+      // Create: Nur eigene Timesheets (userId == auth.uid) oder Admin – vorher konnte
+      // JEDER authentifizierte Nutzer Timesheets mit beliebiger fremder userId anlegen.
       allow create: if isAuthenticated() && (
-        request.resource.data.companyId == null || 
+        request.resource.data.userId == request.auth.uid || isAdmin()
+      ) && (
+        request.resource.data.companyId == null ||
         creatingForSameCompany(request.resource.data.companyId)
       );
-      
+
       // Update: Nur wenn NICHT approved/submitted (GoBD-Konformität) und gleiche Company
       allow update: if isAuthenticated() && (
         resource.data.companyId == null ||

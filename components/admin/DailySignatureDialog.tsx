@@ -120,6 +120,7 @@ export function DailySignatureDialog({
         signerUserId,
         status: status || undefined,
         signerName: finalSignerName || undefined,
+        facilityNotes: notes.trim() || undefined,
       });
 
       toast.success('Signatur erfolgreich gespeichert');

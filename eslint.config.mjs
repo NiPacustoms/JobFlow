@@ -131,6 +131,10 @@ export default [
       "functions/**",
       "tests/**",
       "lib/services/__tests__/**",
+      // Generierte Playwright-Artefakte (gitignored) – kein Quellcode.
+      "playwright-report/**",
+      "test-results/**",
+      "blob-report/**",
     ],
   },
 ];

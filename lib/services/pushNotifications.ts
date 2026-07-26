@@ -43,8 +43,20 @@ export async function getFCMToken(): Promise<string | null> {
     return null;
   }
 
+  const FCM_SW_SCOPE = '/firebase-cloud-messaging-push-scope';
+
   const getServiceWorkerRegistration = async (): Promise<ServiceWorkerRegistration | null> => {
     try {
+      // Bevorzugt den dedizierten FCM-Service-Worker (eigener Scope, siehe
+      // app/layout.tsx). Nur dieser kann onBackgroundMessage verarbeiten.
+      const fcmRegistration = await navigator.serviceWorker
+        .getRegistration(FCM_SW_SCOPE)
+        .catch(() => null);
+      if (fcmRegistration) {
+        logger.info('FCM Service Worker gefunden', {}, { scope: fcmRegistration.scope });
+        return fcmRegistration;
+      }
+
       // Warte zunächst auf Service Worker Ready State (mit Timeout)
       const readyPromise = navigator.serviceWorker.ready;
       const timeoutPromise = new Promise<null>((resolve) => 

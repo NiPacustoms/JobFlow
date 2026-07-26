@@ -94,7 +94,8 @@ export default function MyAssignmentsPage() {
     }
   }, [signedDetails, activeTab]);
 
-  const getPdfUrl = (assignmentId: string, assignment: { pdfUrl?: string }) => {
+  const getPdfUrl = (assignmentId: string, assignment: { formPdfUrl?: string; pdfUrl?: string }) => {
+    if (assignment.formPdfUrl) return assignment.formPdfUrl;
     if (assignment.pdfUrl) return assignment.pdfUrl;
     const doc = userDocuments.find(d => d.notes?.includes(assignmentId) || d.name?.toLowerCase().includes('einsatzmitteilung'));
     return doc?.url ?? null;
@@ -196,7 +197,7 @@ export default function MyAssignmentsPage() {
             const shiftDateStr = shift?.date
               ? format(new Date(shift.date), 'dd.MM.yyyy', { locale: de })
               : '–';
-            const pdfUrl = getPdfUrl(assignment.id, assignment as { pdfUrl?: string });
+            const pdfUrl = getPdfUrl(assignment.id, assignment as { formPdfUrl?: string; pdfUrl?: string });
             const statusColor =
               formStatus === 'acknowledged'
                 ? assignmentStatusColors.accepted

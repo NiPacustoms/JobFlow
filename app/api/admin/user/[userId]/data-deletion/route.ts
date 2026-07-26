@@ -131,7 +131,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
 
     const userRef = adminDb.collection('users').doc(userId);
     batch.update(userRef, {
-      email: `[ANONYMISIERT-${userId.substring(0, 8)}]@deleted.local`,
+      email: `anonymisiert-${userId.substring(0, 8)}@deleted.local`,
       displayName: '[ANONYMISIERT]',
       firstName: '[ANONYMISIERT]',
       lastName: '[ANONYMISIERT]',
@@ -146,7 +146,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
 
     try {
       await adminAuth.updateUser(userId, {
-        email: `[ANONYMISIERT-${userId.substring(0, 8)}]@deleted.local`,
+        email: `anonymisiert-${userId.substring(0, 8)}@deleted.local`,
         displayName: '[ANONYMISIERT]',
         disabled: true,
       });

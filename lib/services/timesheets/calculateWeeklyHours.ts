@@ -35,6 +35,8 @@ export interface WeeklyHoursResult {
 /**
  * Summiert totalHours aller Timesheets (Mo–So) für den Mitarbeiter.
  * approvedOnly: false, damit auch submitted/draft für aktuelle Anzeige zählen.
+ * ABGELEHNTE (rejected) Nachweise zählen NICHT – sonst blockieren zurückgewiesene
+ * Stunden das Wochenstunden-Limit, obwohl sie nie geleistet/anerkannt wurden.
  */
 export async function calculateWeeklyHours(
   mitarbeiterId: string,
@@ -42,14 +44,17 @@ export async function calculateWeeklyHours(
 ): Promise<WeeklyHoursResult> {
   const endOfWeek = getEndOfWeek(startOfWeek);
   try {
-    const { aggregates } = await timesheetService.getByDateRange(
+    const { timesheets } = await timesheetService.getByDateRange(
       mitarbeiterId,
       startOfWeek,
       endOfWeek,
       false
     );
-    const agg = aggregates.find(a => a.userId === mitarbeiterId);
-    const wochenstunden = agg ? Math.round(agg.totalHours * 100) / 100 : 0;
+    const relevant = timesheets.filter(
+      t => t.userId === mitarbeiterId && t.status !== 'rejected'
+    );
+    const sum = relevant.reduce((acc, t) => acc + (Number(t.totalHours) || 0), 0);
+    const wochenstunden = Math.round(sum * 100) / 100;
     return {
       wochenstunden,
       startOfWeek,

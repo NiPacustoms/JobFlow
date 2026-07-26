@@ -83,8 +83,24 @@ export async function POST(req: NextRequest) {
     if (existing) {
       const d = existing.data();
       invitationId = existing.id;
-      token = d.token as string;
-      expiresAt = (d.expiresAt as { toDate?: () => Date })?.toDate?.() ?? new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const existingToken = d.token as string | undefined;
+      const existingExpiry = (d.expiresAt as { toDate?: () => Date })?.toDate?.() ?? null;
+      const isExpired = !existingExpiry || existingExpiry.getTime() <= Date.now();
+      if (isExpired || !existingToken) {
+        // Abgelaufene Einladung: Token UND Ablauf erneuern – sonst verschickt das
+        // erneute Einladen exakt den alten Link, der sofort "abgelaufen" meldet.
+        token = generateToken(48);
+        expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await existing.ref.update({
+          token,
+          expiresAt,
+          createdByUserId: adminUid,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      } else {
+        token = existingToken;
+        expiresAt = existingExpiry;
+      }
     } else {
       token = generateToken(48);
       expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);

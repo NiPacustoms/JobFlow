@@ -225,13 +225,16 @@ export default function StaffManagementPage() {
     return filtered;
   }, [allStaff, searchTerm, roleFilter, statusFilter, groupFilter]);
 
-  // Pagination
-  const totalPages = Math.max(1, Math.ceil((filteredStaff.length || rowsPerPage) / rowsPerPage));
+  // Pagination: Der Service liefert BEREITS genau eine Seite (page/rowsPerPage).
+  // Ein zusätzliches clientseitiges slice() hätte auf Seite 2+ immer eine leere
+  // Liste ergeben. Die Seitenanzahl kommt daher aus dem Server-Total.
+  const totalCount = staffResponse?.total ?? filteredStaff.length;
+  const totalPages = Math.max(1, Math.ceil(Math.max(totalCount, 1) / rowsPerPage));
   useEffect(() => {
     // Reset to first page when filters change
     setPage(1);
   }, [searchTerm, roleFilter, statusFilter, groupFilter]);
-  const paginatedStaff = filteredStaff.slice((page - 1) * rowsPerPage, page * rowsPerPage);
+  const paginatedStaff = filteredStaff;
 
   // CSV Export
   const exportCsv = useCallback(() => {
@@ -911,7 +914,7 @@ export default function StaffManagementPage() {
           >
             <Box>
               <Typography variant="body2" color="text.secondary">
-                {`Zeige ${(page - 1) * rowsPerPage + 1}–${Math.min(page * rowsPerPage, filteredStaff.length)} von ${filteredStaff.length}`}
+                {`Zeige ${filteredStaff.length === 0 ? 0 : (page - 1) * rowsPerPage + 1}–${(page - 1) * rowsPerPage + filteredStaff.length} von ${totalCount}`}
               </Typography>
             </Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>

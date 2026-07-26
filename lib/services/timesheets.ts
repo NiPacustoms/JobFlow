@@ -106,6 +106,7 @@ type FirestoreTimesheetData = {
   facilitySignedBy?: string;
   facilityConfirmationStatus?: 'performed' | 'aborted' | 'no-show';
   facilitySignerName?: string;
+  facilityNotes?: string;
 };
 
 const DEFAULT_DECIMALS = 2;
@@ -587,9 +588,11 @@ export const timesheetService = {
     signerUserId?: string;
     status?: 'performed' | 'aborted' | 'no-show';
     signerName?: string;
+    /** Anmerkung der Einrichtung zur Tagesbestätigung. */
+    facilityNotes?: string;
   }): Promise<void> {
     try {
-      const { timesheetId, signatureUrl, signerUserId, status, signerName } = params;
+      const { timesheetId, signatureUrl, signerUserId, status, signerName, facilityNotes } = params;
       const timesheetRef = doc(getDb(), COLLECTION_NAME, timesheetId);
       
       // KRITISCH: Doppelprüfung - verhindert mehrfache Genehmigung
@@ -609,6 +612,7 @@ export const timesheetService = {
         facilitySignedBy: signerUserId || null, // Aus Datenbank: signerUserId muss übergeben werden
         ...(status ? { facilityConfirmationStatus: status } : {}),
         ...(signerName ? { facilitySignerName: signerName } : {}),
+        ...(facilityNotes && facilityNotes.trim() ? { facilityNotes: facilityNotes.trim() } : {}),
         // falls bereits eingereicht, direkt freigeben
         status: 'approved',
         updatedAt: new Date(),
@@ -1139,6 +1143,7 @@ export const timesheetService = {
       facilitySignedBy: data.facilitySignedBy,
       facilityConfirmationStatus: data.facilityConfirmationStatus,
       facilitySignerName: data.facilitySignerName,
+      facilityNotes: data.facilityNotes,
       facilityId: data.facilityId,
       station: data.station,
       location: data.location,

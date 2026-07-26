@@ -148,7 +148,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       var registerFirebaseSW = function(retryCount) {
                         retryCount = retryCount || 0;
                         var maxRetries = 3, retryDelay = 1000 * (retryCount + 1);
-                        navigator.serviceWorker.register('/firebase-messaging-sw.js')
+                        // WICHTIG: Eigener Scope. Beide SW-Skripte liegen im Root; ohne
+                        // eigenen Scope registrieren beide auf '/' und der zweite ERSETZT
+                        // den ersten – die PWA-/Offline-Logik aus sw.js wäre tot.
+                        navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/firebase-cloud-messaging-push-scope' })
                           .then(function(registration) {
                             logger.info('✅ [SW] Firebase messaging SW registered', { scope: registration && registration.scope });
                             var waitForActivation = function() {

@@ -135,7 +135,9 @@ export default function AssignmentFormPage() {
             const pdfDoc = docs.find(d => d.notes?.includes(a.id) || d.name?.toLowerCase().includes('einsatzmitteilung'));
             if (isMounted && pdfDoc?.url) setAssignmentPdfUrl(pdfDoc.url);
           } catch {
-            if ((a as { pdfUrl?: string }).pdfUrl) setAssignmentPdfUrl((a as { pdfUrl: string }).pdfUrl);
+            const fallbackUrl = (a as { formPdfUrl?: string; pdfUrl?: string }).formPdfUrl ??
+              (a as { pdfUrl?: string }).pdfUrl;
+            if (fallbackUrl) setAssignmentPdfUrl(fallbackUrl);
           }
         }
 
@@ -218,10 +220,12 @@ export default function AssignmentFormPage() {
       notes: `Einsatzmitteilung für Assignment ${assignment.id}`,
     });
 
-    // PDF-URL am Assignment speichern, damit der Admin die Einsatzmitteilung unter „Einsätze“ öffnen kann
+    // PDF-URL am Assignment speichern, damit der Admin die Einsatzmitteilung unter
+    // „Einsätze“ öffnen kann. WICHTIG: eigene Felder – pdfUrl/pdfGenerated gehören
+    // zum Stundennachweis-Lauf und hätten dessen PDF-/Mailversand blockiert.
     await assignmentService.update(assignment.id, {
-      pdfUrl: pdfResult.url,
-      pdfGenerated: true,
+      formPdfUrl: pdfResult.url,
+      formPdfGeneratedAt: new Date(),
     });
 
     return pdfResult;

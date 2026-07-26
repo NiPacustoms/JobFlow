@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
     // User-Dokument anonymisieren (nicht löschen, da Referenzen bestehen können)
     const userDoc = await adminDb.collection('users').doc(userId);
     batch.update(userDoc, {
-      email: `[ANONYMISIERT-${userId.substring(0, 8)}]@deleted.local`,
+      email: `anonymisiert-${userId.substring(0, 8)}@deleted.local`,
       displayName: '[ANONYMISIERT]',
       firstName: '[ANONYMISIERT]',
       lastName: '[ANONYMISIERT]',
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
     // 3. Firebase Auth User löschen/anonymisieren
     try {
       await adminAuth.updateUser(userId, {
-        email: `[ANONYMISIERT-${userId.substring(0, 8)}]@deleted.local`,
+        email: `anonymisiert-${userId.substring(0, 8)}@deleted.local`,
         displayName: '[ANONYMISIERT]',
         disabled: true,
       });
