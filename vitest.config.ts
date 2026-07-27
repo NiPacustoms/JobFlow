@@ -77,10 +77,10 @@ export default defineConfig({
         'lib/services/offlineQueue.ts': { statements: 85, functions: 85, lines: 85, branches: 75 },
         'lib/validations/**': { statements: 90, functions: 45, lines: 90, branches: 60 },
         // ── Globale Untergrenze (Ratsche: nur nach oben anpassen) ────────
-        statements: 44,
-        branches: 62,
+        statements: 52,
+        branches: 63,
         functions: 58,
-        lines: 44,
+        lines: 52,
       },
     },
   },
