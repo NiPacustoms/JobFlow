@@ -95,6 +95,85 @@ describe('staffGroupService', () => {
     const service = await lade();
     const result = await service.getGroupsForUser('u1');
     expect(Array.isArray(result)).toBe(true);
+    expect(harness.hatWhere('members', 'u1')).toBe(true);
+  });
+
+  it('fügt ein bereits vorhandenes Mitglied nicht doppelt hinzu', async () => {
+    harness.setDoc(gruppe('g1', { members: ['u2'] }));
+    const service = await lade();
+    await service.addMember('g1', 'u2');
+    expect(harness.writes.some(w => w.art === 'update')).toBe(false);
+  });
+
+  it('hängt ein neues Mitglied an die Liste an', async () => {
+    harness.setDoc(gruppe('g1', { members: ['u1'] }));
+    const service = await lade();
+    await service.addMember('g1', 'u2');
+
+    const update = harness.writes.find(w => w.art === 'update')?.daten as Record<string, unknown>;
+    expect(update.members).toEqual(['u1', 'u2']);
+  });
+
+  it('entfernt genau ein Mitglied und behält die übrigen', async () => {
+    harness.setDoc(gruppe('g1', { members: ['u1', 'u2', 'u3'] }));
+    const service = await lade();
+    await service.removeMember('g1', 'u2');
+
+    const update = harness.writes.find(w => w.art === 'update')?.daten as Record<string, unknown>;
+    expect(update.members).toEqual(['u1', 'u3']);
+  });
+
+  it('wirft, wenn die Gruppe für die Mitgliederpflege fehlt', async () => {
+    harness.setDoc(null);
+    const service = await lade();
+    await expect(service.addMember('weg', 'u2')).rejects.toThrow('not found');
+    await expect(service.removeMember('weg', 'u2')).rejects.toThrow('not found');
+  });
+
+  it('liefert die Mitglieder mit Namen und Rolle', async () => {
+    // 1. getDoc: Gruppe, danach je Mitglied ein Nutzerdokument
+    harness.setDoc(gruppe('g1', { members: ['u1'] }));
+    const service = await lade();
+    const spy = vi.spyOn(service, 'getById').mockResolvedValue({
+      id: 'g1',
+      name: 'Nachtdienst',
+      members: ['u1', 'weg'],
+    } as never);
+    harness.setDoc({
+      id: 'u1',
+      data: { displayName: 'Anna Muster', email: 'anna@aufabruf.eu', role: 'nurse' },
+    });
+
+    const mitglieder = await service.getGroupMembers('g1');
+    // Der Harness liefert für beide Abfragen dasselbe Dokument – beide Mitglieder
+    // werden also aufgelöst; entscheidend ist die Feldabbildung.
+    expect(mitglieder[0]).toMatchObject({
+      userId: 'u1',
+      displayName: 'Anna Muster',
+      email: 'anna@aufabruf.eu',
+      role: 'nurse',
+    });
+    expect(mitglieder[0].addedAt).toBeInstanceOf(Date);
+    spy.mockRestore();
+  });
+
+  it('liefert eine leere Mitgliederliste für eine unbekannte Gruppe', async () => {
+    harness.setDoc(null);
+    const service = await lade();
+    await expect(service.getGroupMembers('weg')).resolves.toEqual([]);
+  });
+
+  it('überspringt gelöschte Mitglieder', async () => {
+    const service = await lade();
+    const spy = vi.spyOn(service, 'getById').mockResolvedValue({
+      id: 'g1',
+      name: 'Nachtdienst',
+      members: ['weg'],
+    } as never);
+    harness.setDoc(null);
+
+    await expect(service.getGroupMembers('g1')).resolves.toEqual([]);
+    spy.mockRestore();
   });
 });
 

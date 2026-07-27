@@ -176,3 +176,98 @@ describe('Lesen und Löschen', () => {
     expect(deleteObject).toHaveBeenCalled();
   });
 });
+
+describe('generateFileName', () => {
+  it('hängt einen Zeitstempel an und behält die Endung', async () => {
+    const service = await lade();
+    const name = service.generateFileName('Stundenliste Juli.pdf');
+    expect(name).toMatch(/^Stundenliste Juli_.+\.pdf$/);
+    // Doppelpunkte und Punkte im Zeitstempel sind für Storage-Pfade ersetzt
+    expect(name.split('_')[1]).not.toContain(':');
+  });
+
+  it('stellt ein Präfix voran', async () => {
+    const service = await lade();
+    expect(service.generateFileName('zeugnis.pdf', 'doc')).toMatch(/^doc_zeugnis_.+\.pdf$/);
+  });
+
+  it('kommt mit mehreren Punkten im Namen zurecht', async () => {
+    const service = await lade();
+    const name = service.generateFileName('bericht.2026.07.csv');
+    expect(name.endsWith('.csv')).toBe(true);
+  });
+});
+
+describe('validateFile', () => {
+  it('akzeptiert die erlaubten Dateitypen', async () => {
+    const service = await lade();
+    for (const typ of [
+      'application/pdf',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/csv',
+      'application/json',
+    ]) {
+      expect(service.validateFile(datei('x', typ))).toEqual({ valid: true });
+    }
+  });
+
+  it('lehnt nicht erlaubte Dateitypen ab', async () => {
+    const service = await lade();
+    const ergebnis = service.validateFile(datei('bild.png', 'image/png'));
+    expect(ergebnis.valid).toBe(false);
+    expect(ergebnis.error).toContain('Dateityp nicht unterstützt');
+  });
+
+  it('lehnt zu große Dateien mit Angabe der Grenze ab', async () => {
+    const service = await lade();
+    const gross = new File([new Uint8Array(2048)], 'gross.pdf', { type: 'application/pdf' });
+    const ergebnis = service.validateFile(gross, 1024);
+    expect(ergebnis.valid).toBe(false);
+    expect(ergebnis.error).toContain('zu groß');
+  });
+});
+
+describe('cleanupOldExports', () => {
+  it('löscht nur Exporte älter als die Frist und zählt sie', async () => {
+    const service = await lade();
+    const alt = new Date();
+    alt.setDate(alt.getDate() - 60);
+    const neu = new Date();
+
+    const spy = vi.spyOn(service, 'getAllExports').mockResolvedValue([
+      { id: 'exports/u1/alt.pdf', name: 'alt.pdf', uploadedAt: alt } as never,
+      { id: 'exports/u1/neu.pdf', name: 'neu.pdf', uploadedAt: neu } as never,
+    ]);
+    const loeschen = vi.spyOn(service, 'deleteExport').mockResolvedValue(undefined);
+
+    await expect(service.cleanupOldExports(30)).resolves.toBe(1);
+    expect(loeschen).toHaveBeenCalledWith('exports/u1/alt.pdf');
+    spy.mockRestore();
+    loeschen.mockRestore();
+  });
+
+  it('zählt Exporte nicht mit, deren Löschung scheitert', async () => {
+    const service = await lade();
+    const alt = new Date();
+    alt.setDate(alt.getDate() - 60);
+
+    const spy = vi.spyOn(service, 'getAllExports').mockResolvedValue([
+      { id: 'exports/u1/alt.pdf', name: 'alt.pdf', uploadedAt: alt } as never,
+    ]);
+    const loeschen = vi
+      .spyOn(service, 'deleteExport')
+      .mockRejectedValue(new Error('Rules verweigern'));
+
+    await expect(service.cleanupOldExports(30)).resolves.toBe(0);
+    spy.mockRestore();
+    loeschen.mockRestore();
+  });
+
+  it('reicht Fehler beim Auflisten weiter', async () => {
+    const service = await lade();
+    const spy = vi.spyOn(service, 'getAllExports').mockRejectedValue(new Error('kein Zugriff'));
+    await expect(service.cleanupOldExports()).rejects.toThrow('kein Zugriff');
+    spy.mockRestore();
+  });
+});
