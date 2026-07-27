@@ -163,6 +163,122 @@ describe('useAssignments', () => {
     expect(declineAssignment.mock.calls.length + declineCf.mock.calls.length).toBeGreaterThan(0);
   });
 
+  it('aktualisiert und löscht Einsätze', async () => {
+    listAll.mockResolvedValue({ data: [einsatz()] });
+    updateAssignment.mockResolvedValue(undefined);
+    deleteAssignment.mockResolvedValue(undefined);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { result } = renderHook(() => useAssignments(), { wrapper });
+    await waitFor(() => expect(result.current.assignments).toHaveLength(1));
+
+    await act(async () => {
+      result.current.updateAssignment('a1', { notes: 'geändert' });
+      result.current.deleteAssignment('a1');
+    });
+    await waitFor(() => expect(updateAssignment).toHaveBeenCalledWith('a1', { notes: 'geändert' }));
+    await waitFor(() => expect(deleteAssignment).toHaveBeenCalledWith('a1'));
+  });
+
+  it('löscht nur nach bestätigter Rückfrage', async () => {
+    listAll.mockResolvedValue({ data: [einsatz()] });
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const { result } = renderHook(() => useAssignments(), { wrapper });
+    await waitFor(() => expect(result.current.assignments).toHaveLength(1));
+
+    await act(async () => {
+      result.current.deleteAssignment('a1');
+    });
+    expect(deleteAssignment).not.toHaveBeenCalled();
+  });
+
+  it('meldet Fehler der Aktionen als Toast', async () => {
+    listAll.mockResolvedValue({ data: [einsatz()] });
+    acceptAssignment.mockRejectedValue(new Error('Schicht ist voll'));
+    const { result } = renderHook(() => useAssignments(), { wrapper });
+    await waitFor(() => expect(result.current.assignments).toHaveLength(1));
+
+    await act(async () => {
+      result.current.acceptAssignment('a1');
+    });
+    const { toast } = await import('@/lib/utils/toast');
+    await waitFor(() =>
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringContaining('Schicht ist voll'))
+    );
+  });
+
+  it('liefert eine Statistik über alle Status', async () => {
+    listAll.mockResolvedValue({ data: [
+      einsatz({ id: 'a1', status: 'pending' }),
+      einsatz({ id: 'a2', status: 'accepted' }),
+      einsatz({ id: 'a3', status: 'accepted' }),
+      einsatz({ id: 'a4', status: 'declined' }),
+      einsatz({ id: 'a5', status: 'completed' }),
+    ] });
+    const { result } = renderHook(() => useAssignments(), { wrapper });
+    await waitFor(() => expect(result.current.assignments).toHaveLength(5));
+
+    expect(result.current.getStats()).toEqual({
+      total: 5,
+      pending: 1,
+      accepted: 2,
+      declined: 1,
+      completed: 1,
+    });
+    expect(result.current.getAssignmentsByStatus('accepted')).toHaveLength(2);
+  });
+
+  it('liefert Farben und Beschriftungen für Status und Dringlichkeit', async () => {
+    listAll.mockResolvedValue({ data: [] });
+    const { result } = renderHook(() => useAssignments(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.getStatusColor('pending')).toBe('warning');
+    expect(result.current.getStatusColor('accepted')).toBe('success');
+    expect(result.current.getStatusColor('declined')).toBe('error');
+    expect(result.current.getStatusColor('completed')).toBe('info');
+    expect(result.current.getStatusColor('cancelled')).toBe('default');
+    expect(result.current.getStatusColor('x')).toBe('default');
+
+    expect(result.current.getStatusLabel('pending')).toBe('Ausstehend');
+    expect(result.current.getStatusLabel('cancelled')).toBe('Storniert');
+    expect(result.current.getStatusLabel('x')).toBe('Unbekannt');
+
+    expect(result.current.getPriorityColor('urgent')).toBe('error');
+    expect(result.current.getPriorityColor('high')).toBe('warning');
+    expect(result.current.getPriorityColor('medium')).toBe('info');
+    expect(result.current.getPriorityColor('low')).toBe('success');
+    expect(result.current.getPriorityColor('x')).toBe('default');
+
+    expect(result.current.getPriorityLabel('urgent')).toBe('Dringend');
+    expect(result.current.getPriorityLabel('high')).toBe('Hoch');
+    expect(result.current.getPriorityLabel('medium')).toBe('Mittel');
+    expect(result.current.getPriorityLabel('low')).toBe('Niedrig');
+    expect(result.current.getPriorityLabel('x')).toBe('Unbekannt');
+  });
+
+  it('formatiert Datum, Uhrzeit und beides zusammen deutsch', async () => {
+    listAll.mockResolvedValue({ data: [] });
+    const { result } = renderHook(() => useAssignments(), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.formatDate(new Date(2026, 6, 20))).toBe('20.07.2026');
+    expect(result.current.formatTime(new Date(2026, 6, 20, 6, 5))).toBe('06:05');
+    expect(result.current.formatDateTime(new Date(2026, 6, 20, 6, 5))).toContain('20.07.2026');
+    // auch mit ISO-Zeichenkette
+    expect(result.current.formatDate('2026-07-20')).toBe('20.07.2026');
+  });
+
+  it('lädt die Einsätze auf Wunsch neu', async () => {
+    listAll.mockResolvedValue({ data: [einsatz()] });
+    const { result } = renderHook(() => useAssignments(), { wrapper });
+    await waitFor(() => expect(result.current.assignments).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(listAll.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('meldet einen Ladefehler', async () => {
     listAll.mockRejectedValue(new Error('kein Zugriff'));
     const { result } = renderHook(() => useAssignments(), { wrapper });

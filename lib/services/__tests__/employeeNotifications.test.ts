@@ -225,3 +225,81 @@ describe('Einstellungen', () => {
     });
   });
 });
+
+describe('Einzelne Zustandsänderungen', () => {
+  it.each([
+    ['markAsRead', { read: true }],
+    ['markAsUnread', { read: false }],
+    ['starNotification', { starred: true }],
+    ['unstarNotification', { starred: false }],
+    ['archiveNotification', { archived: true }],
+    ['unarchiveNotification', { archived: false }],
+  ])('%s schreibt das erwartete Feld', async (methode, erwartet) => {
+    const service = await lade();
+    await (service as unknown as Record<string, (id: string) => Promise<void>>)[methode]('n1');
+
+    const update = harness.writes.find(w => w.art === 'update')?.daten as Record<string, unknown>;
+    expect(update).toMatchObject(erwartet);
+    expect(update.updatedAt).toBe('SERVER_TIMESTAMP');
+  });
+
+  it('reicht Schreibfehler weiter', async () => {
+    const firestore = await import('firebase/firestore');
+    vi.mocked(firestore.updateDoc).mockRejectedValueOnce(new Error('Rules verweigern'));
+    const service = await lade();
+    await expect(service.markAsRead('n1')).rejects.toThrow('Rules verweigern');
+  });
+});
+
+describe('sendNotification', () => {
+  it('legt eine Benachrichtigung mit Standardwerten an', async () => {
+    const service = await lade();
+    const id = await service.sendNotification({
+      userId: 'u1',
+      title: 'Neue Schicht',
+      message: 'Morgen 06:00',
+      type: 'shift',
+    });
+
+    expect(typeof id).toBe('string');
+    const daten = harness.writes.find(w => w.art === 'add')?.daten as Record<string, unknown>;
+    expect(daten).toMatchObject({
+      userId: 'u1',
+      priority: 'medium',
+      read: false,
+      starred: false,
+      archived: false,
+    });
+  });
+
+  it('übernimmt eine ausdrücklich gesetzte Priorität und Zusatzangaben', async () => {
+    const service = await lade();
+    await service.sendNotification({
+      userId: 'u1',
+      title: 'Dringend',
+      message: 'Bitte melden',
+      type: 'alert',
+      priority: 'high',
+      details: 'Rückruf erbeten',
+      actionUrl: '/schedule',
+      metadata: { shiftId: 's1' },
+    });
+
+    const daten = harness.writes.find(w => w.art === 'add')?.daten as Record<string, unknown>;
+    expect(daten).toMatchObject({
+      priority: 'high',
+      details: 'Rückruf erbeten',
+      actionUrl: '/schedule',
+      metadata: { shiftId: 's1' },
+    });
+  });
+
+  it('reicht Fehler beim Anlegen weiter', async () => {
+    const firestore = await import('firebase/firestore');
+    vi.mocked(firestore.addDoc).mockRejectedValueOnce(new Error('Rules verweigern'));
+    const service = await lade();
+    await expect(
+      service.sendNotification({ userId: 'u1', title: 'x', message: 'y', type: 'info' })
+    ).rejects.toThrow('Rules verweigern');
+  });
+});
