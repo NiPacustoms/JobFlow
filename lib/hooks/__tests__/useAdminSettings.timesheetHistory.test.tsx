@@ -234,4 +234,77 @@ describe('useTimesheetHistory', () => {
     expect(result.current.weeklyChartData).toEqual([]);
     expect(result.current.statistics.totalHours).toBe(0);
   });
+
+  it('liefert Tages-Diagrammdaten mit allen Stundenarten', async () => {
+    getByUserId.mockResolvedValue([
+      nachweis({ totalHours: 8, regularHours: 6, overtimeHours: 2, nightHours: 4 }),
+      nachweis({ id: 't2', totalHours: 6, weekendHours: 6, startDate: new Date(2026, 6, 25) }),
+    ]);
+    const { result } = renderHook(() => useTimesheetHistory(), { wrapper });
+    await waitFor(() => expect(result.current.timesheets).toHaveLength(2));
+
+    const tage = result.current.chartData;
+    expect(tage.length).toBeGreaterThanOrEqual(2);
+    // aufsteigend nach Datum sortiert
+    expect([...tage].sort((a, b) => a.date.localeCompare(b.date))).toEqual(tage);
+    const ersterTag = tage[0];
+    expect(ersterTag.totalHours).toBe(8);
+    expect(ersterTag.overtimeHours).toBe(2);
+    expect(ersterTag.nightHours).toBe(4);
+  });
+
+  it('liefert Farben und Beschriftungen für alle Status', async () => {
+    const { result } = renderHook(() => useTimesheetHistory(), { wrapper });
+    await waitFor(() => expect(result.current.timesheets).toEqual([]));
+
+    expect(result.current.getStatusColor('active')).toBe('success');
+    expect(result.current.getStatusColor('completed')).toBe('info');
+    expect(result.current.getStatusColor('pending')).toBe('warning');
+    expect(result.current.getStatusColor('cancelled')).toBe('error');
+    expect(result.current.getStatusColor('x')).toBe('default');
+
+    expect(result.current.getStatusLabel('active')).toBe('Aktiv');
+    expect(result.current.getStatusLabel('completed')).toBe('Abgeschlossen');
+    expect(result.current.getStatusLabel('pending')).toBe('Ausstehend');
+    expect(result.current.getStatusLabel('cancelled')).toBe('Storniert');
+    expect(result.current.getStatusLabel('x')).toBe('Unbekannt');
+  });
+
+  it('liefert Trend-Symbole und -Texte', async () => {
+    const { result } = renderHook(() => useTimesheetHistory(), { wrapper });
+    await waitFor(() => expect(result.current.timesheets).toEqual([]));
+
+    expect(result.current.getTrendIcon('up')).toBe('📈');
+    expect(result.current.getTrendIcon('down')).toBe('📉');
+    expect(result.current.getTrendIcon('stable')).toBe('➡️');
+    expect(result.current.getTrendText('up')).toBe('Steigend');
+    expect(result.current.getTrendText('down')).toBe('Fallend');
+    expect(result.current.getTrendText('stable')).toBe('Stabil');
+  });
+
+  it('formatiert Woche, Monat und Zeitstempel', async () => {
+    const { result } = renderHook(() => useTimesheetHistory(), { wrapper });
+    await waitFor(() => expect(result.current.timesheets).toEqual([]));
+
+    expect(typeof result.current.formatWeek('2026-W30')).toBe('string');
+    expect(typeof result.current.formatMonth('2026-07')).toBe('string');
+    expect(result.current.formatDateTime(new Date(2026, 6, 20, 6, 5))).toContain('2026');
+  });
+
+  it('lädt die Nachweise auf Wunsch neu', async () => {
+    getByUserId.mockResolvedValue([nachweis()]);
+    const { result } = renderHook(() => useTimesheetHistory(), { wrapper });
+    await waitFor(() => expect(result.current.timesheets).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(getByUserId.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('meldet einen Ladefehler der Nachweise', async () => {
+    getByUserId.mockRejectedValue(new Error('kein Zugriff'));
+    const { result } = renderHook(() => useTimesheetHistory(), { wrapper });
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+  });
 });
