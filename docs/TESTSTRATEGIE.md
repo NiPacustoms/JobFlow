@@ -9,7 +9,7 @@ unterschriebener Nachweis ergibt, braucht einen.
 
 | Ebene | Befehl | Umfang |
 | --- | --- | --- |
-| Unit / Service (Client) | `npm run test:unit` | 1404 Tests, jsdom, Firestore gemockt |
+| Unit / Service (Client) | `npm run test:unit` | 1424 Tests, jsdom, Firestore gemockt |
 | Unit (Cloud Functions) | `npm run test:functions` | 30 Tests, Node, Admin-SDK gemockt |
 | Firestore-Rules | `npm run test:rules` | Mandantenisolation, Rechte-Eskalation, Timesheet-Create |
 | End-to-End | `npm run test:e2e` | 34 Playwright-Tests (Mock-Auth) |

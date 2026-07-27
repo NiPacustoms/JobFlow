@@ -78,7 +78,7 @@ export default defineConfig({
         'lib/validations/**': { statements: 90, functions: 45, lines: 90, branches: 60 },
         // ── Globale Untergrenze (Ratsche: nur nach oben anpassen) ────────
         statements: 77,
-        branches: 71,
+        branches: 72,
         functions: 76,
         lines: 77,
       },

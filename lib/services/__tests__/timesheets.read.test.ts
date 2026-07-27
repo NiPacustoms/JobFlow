@@ -277,3 +277,173 @@ describe('Pausen', () => {
     await expect(service.addBreak('fehlt', { reason: 'x', duration: 10 })).rejects.toThrow();
   });
 });
+
+describe('Offline-Verhalten', () => {
+  it('stellt Änderungen bei fehlender Verbindung in die Warteschlange', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    const { offlineQueueService } = await import('../offlineQueue');
+    const service = await lade();
+
+    await service.update('t1', { endTime: '15:00' });
+    expect(vi.mocked(offlineQueueService.addToQueue)).toHaveBeenCalledWith('timesheet', 'update', {
+      id: 't1',
+      endTime: '15:00',
+    });
+    // kein direkter Firestore-Schreibzugriff
+    expect(harness.writes).toHaveLength(0);
+  });
+
+  it('verweigert das Einreichen ohne Verbindung (serverseitige ArbZG-Prüfung)', async () => {
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true });
+    const service = await lade();
+    await expect(service.submit('t1')).rejects.toThrow(/Internetverbindung/);
+  });
+});
+
+describe('update – GoBD-Unveränderlichkeit', () => {
+  it('rechnet die Stunden bei Zeitänderung neu', async () => {
+    harness.setDoc(nachweis('t1'));
+    const service = await lade();
+
+    await service.update('t1', { endTime: '16:00' });
+    const update = harness.writes.find(w => w.art === 'update')?.daten as Record<string, unknown>;
+    // 06:00–16:00 minus 30 Minuten Pause
+    expect(update.totalHours).toBe(9.5);
+  });
+
+  it('berücksichtigt eine geänderte Pausenzeit', async () => {
+    harness.setDoc(nachweis('t1'));
+    const service = await lade();
+
+    await service.update('t1', { breakMinutes: 60 });
+    const update = harness.writes.find(w => w.art === 'update')?.daten as Record<string, unknown>;
+    expect(update.totalHours).toBe(7);
+  });
+
+  it('lässt reine Anmerkungen ohne Neuberechnung zu', async () => {
+    harness.setDoc(nachweis('t1'));
+    const service = await lade();
+
+    await service.update('t1', { notes: 'Ruhiger Dienst' });
+    const update = harness.writes.find(w => w.art === 'update')?.daten as Record<string, unknown>;
+    expect(update.totalHours).toBeUndefined();
+    expect(update.notes).toBe('Ruhiger Dienst');
+  });
+
+  it.each(['approved', 'submitted'])('verweigert die Änderung im Status %s', async status => {
+    harness.setDoc(nachweis('t1', { status }));
+    const service = await lade();
+    await expect(service.update('t1', { endTime: '16:00' })).rejects.toThrow(/GoBD/);
+  });
+
+  it('wirft, wenn der Nachweis nicht existiert', async () => {
+    harness.setDoc(null);
+    const service = await lade();
+    await expect(service.update('weg', { endTime: '16:00' })).rejects.toThrow('not found');
+  });
+});
+
+describe('approveRangeWithFacilitySignature', () => {
+  it('bestätigt alle Nachweise des Zeitraums und zählt sie', async () => {
+    harness.setDocs([
+      nachweis('t1', { status: 'submitted' }),
+      nachweis('t2', { status: 'approved' }),
+    ]);
+    const service = await lade();
+
+    const anzahl = await service.approveRangeWithFacilitySignature({
+      userId: 'u1',
+      start: new Date(2026, 6, 20),
+      end: new Date(2026, 6, 26),
+      signatureUrl: 'https://storage/signatur.png',
+      signerUserId: 'leitung1',
+    });
+
+    expect(anzahl).toBe(2);
+    const updates = harness.writes.filter(w => w.art === 'update');
+    expect(updates).toHaveLength(2);
+    // eingereichter Nachweis wird genehmigt, bereits genehmigter behält den Status
+    expect((updates[0].daten as Record<string, unknown>).status).toBe('approved');
+    expect((updates[1].daten as Record<string, unknown>).status).toBe('approved');
+    expect((updates[0].daten as Record<string, unknown>).facilitySignedBy).toBe('leitung1');
+  });
+
+  it('liefert 0, wenn im Zeitraum nichts erfasst wurde', async () => {
+    harness.setDocs([]);
+    const service = await lade();
+
+    await expect(
+      service.approveRangeWithFacilitySignature({
+        userId: 'u1',
+        start: new Date(2026, 6, 20),
+        end: new Date(2026, 6, 26),
+        signatureUrl: 'https://storage/signatur.png',
+        signerUserId: 'leitung1',
+      })
+    ).resolves.toBe(0);
+  });
+});
+
+describe('mapDocToTimesheet – Feldabbildung', () => {
+  it('übernimmt Signatur-, Einrichtungs- und Zeitfelder', async () => {
+    harness.setDoc(
+      nachweis('t1', {
+        startDate: ts(new Date(2026, 6, 20)),
+        endDate: ts(new Date(2026, 6, 21)),
+        nightHours: 6,
+        weekendHours: 8,
+        holidayHours: 0,
+        overtimeHours: 1.5,
+        regularHours: 6,
+        submittedAt: ts(new Date(2026, 6, 21)),
+        approvedAt: ts(new Date(2026, 6, 22)),
+        approvedBy: 'admin1',
+        employeeSignatureUrl: 'https://storage/ma.png',
+        employeeSignedAt: ts(new Date(2026, 6, 21)),
+        facilitySignatureUrl: 'https://storage/haus.png',
+        facilitySignedAt: ts(new Date(2026, 6, 21)),
+        facilitySignedBy: 'leitung1',
+        facilityConfirmationStatus: 'performed',
+        facilitySignerName: 'Frau Meier',
+        facilityNotes: 'alles in Ordnung',
+        facilityId: 'f1',
+        station: 'Station 3',
+        location: '2. Etage',
+      })
+    );
+    const service = await lade();
+
+    const t = await service.getById('t1');
+    expect(t).toMatchObject({
+      nightHours: 6,
+      weekendHours: 8,
+      overtimeHours: 1.5,
+      approvedBy: 'admin1',
+      facilitySignedBy: 'leitung1',
+      facilityConfirmationStatus: 'performed',
+      facilitySignerName: 'Frau Meier',
+      facilityId: 'f1',
+      station: 'Station 3',
+      location: '2. Etage',
+    });
+    // Folgetag der Nachtschicht bleibt erhalten
+    expect(t?.endDate).toEqual(new Date(2026, 6, 21));
+  });
+
+  it('setzt Vorgabewerte für fehlende Felder', async () => {
+    harness.setDoc({ id: 't1', data: { userId: 'u1', startTime: '06:00', endTime: '14:00' } });
+    const service = await lade();
+
+    const t = await service.getById('t1');
+    expect(t).toMatchObject({
+      companyId: '',
+      breakMinutes: 0,
+      totalHours: 0,
+      nightHours: 0,
+      status: 'draft',
+      breaks: [],
+    });
+    expect(t?.date).toBeInstanceOf(Date);
+    expect(t?.submittedAt).toBeUndefined();
+  });
+});
