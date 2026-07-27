@@ -223,3 +223,69 @@ describe('updateAuthUserProfile', () => {
     });
   });
 });
+
+describe('getOrCreateAuthUser – Sonderfälle', () => {
+  it('ergänzt eine fehlende companyId mit der Einzelfirma', async () => {
+    harness.setDoc(nutzerDoc({ companyId: undefined }));
+    const { getOrCreateAuthUser } = await lade();
+
+    const user = await getOrCreateAuthUser(firebaseUser());
+    expect(user?.companyId).toBeTruthy();
+    // Nachtrag wird ins Dokument geschrieben
+    expect(
+      harness.writes.some(
+        w => w.art === 'update' && (w.daten as Record<string, unknown>).companyId !== undefined
+      )
+    ).toBe(true);
+  });
+
+  it('korrigiert eine unzulässige Rolle im Dokument', async () => {
+    harness.setDoc(nutzerDoc({ role: 'superuser' }));
+    const { getOrCreateAuthUser } = await lade();
+
+    const user = await getOrCreateAuthUser(firebaseUser());
+    expect(user?.role).toBe('admin');
+    expect(
+      harness.writes.some(w => (w.daten as Record<string, unknown>)?.role === 'admin')
+    ).toBe(true);
+  });
+
+  it('übernimmt eine benutzerdefinierte Rollen-ID', async () => {
+    harness.setDoc(nutzerDoc({ customRoleId: 'rolle-disponent' }));
+    const { getOrCreateAuthUser } = await lade();
+
+    const user = await getOrCreateAuthUser(firebaseUser());
+    expect(user?.customRoleId).toBe('rolle-disponent');
+  });
+
+  it('setzt Vorgabewerte für fehlende Profilfelder', async () => {
+    harness.setDoc({ id: 'u1', data: { role: 'nurse', companyId: 'firmaA' } });
+    const { getOrCreateAuthUser } = await lade();
+
+    const user = await getOrCreateAuthUser(firebaseUser());
+    expect(user).toMatchObject({
+      email: '',
+      displayName: '',
+      qualifications: [],
+      documents: [],
+      active: true,
+    });
+    expect(user?.notificationSettings).toBeTruthy();
+    expect(user?.createdAt).toBeInstanceOf(Date);
+  });
+
+  it('behandelt active=false korrekt', async () => {
+    harness.setDoc(nutzerDoc({ active: false }));
+    const { getOrCreateAuthUser } = await lade();
+
+    const user = await getOrCreateAuthUser(firebaseUser());
+    expect(user?.active).toBe(false);
+  });
+
+  it('liefert null, wenn das Dokument nach der Anlage weiterhin fehlt', async () => {
+    harness.setDoc(null);
+    const { getOrCreateAuthUser } = await lade();
+
+    await expect(getOrCreateAuthUser(firebaseUser())).resolves.toBeNull();
+  });
+});

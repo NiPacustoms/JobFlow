@@ -181,3 +181,117 @@ describe('Anlegen, Löschen, Statistik', () => {
     expect(id).toBeTruthy();
   });
 });
+
+describe('exportReport – Mandantenprüfung', () => {
+  it('liefert den Export-Pfad für den eigenen Bericht', async () => {
+    vi.useFakeTimers();
+    harness.setDoc(bericht('r1'));
+    const service = await lade();
+
+    const versprechen = service.exportReport('r1', 'pdf');
+    await vi.advanceTimersByTimeAsync(1500);
+    await expect(versprechen).resolves.toBe('/reports/export-r1.pdf');
+    vi.useRealTimers();
+  });
+
+  it('verweigert den Export eines Berichts einer anderen Firma', async () => {
+    harness.setDoc(bericht('r1', { companyId: 'firmaB' }));
+    const service = await lade();
+    await expect(service.exportReport('r1', 'csv')).rejects.toThrow('different company');
+  });
+
+  it('wirft, wenn der Bericht nicht existiert', async () => {
+    harness.setDoc(null);
+    const service = await lade();
+    await expect(service.exportReport('weg', 'csv')).rejects.toThrow('nicht gefunden');
+  });
+
+  it('wirft ohne companyId', async () => {
+    const { getCompanyIdFromAuth } = await import('@/lib/utils/companyId');
+    vi.mocked(getCompanyIdFromAuth).mockResolvedValue(null);
+    const service = await lade();
+    await expect(service.exportReport('r1', 'csv')).rejects.toThrow('No companyId');
+  });
+});
+
+describe('generateReportData – Strukturen je Typ', () => {
+  it('liefert für Arbeitszeit die erwarteten Kennzahlen', async () => {
+    const service = await lade();
+    const daten = await service.generateReportData({
+      type: 'worktime',
+      period: 'month',
+      dateRange: { start: new Date(2026, 6, 1), end: new Date(2026, 6, 31) },
+    } as never);
+
+    expect(daten).toMatchObject({
+      totalHours: 0,
+      regularHours: 0,
+      overtimeHours: 0,
+      daysWorked: 0,
+      facilities: [],
+      shifts: [],
+    });
+  });
+
+  it('liefert für Überstunden die Aufschlüsselung nach Art', async () => {
+    const service = await lade();
+    const daten = (await service.generateReportData({
+      type: 'overtime',
+      period: 'month',
+      dateRange: { start: new Date(2026, 6, 1), end: new Date(2026, 6, 31) },
+    } as never)) as Record<string, unknown>;
+
+    expect(daten.overtimeByType).toEqual({ night: 0, weekend: 0, holiday: 0 });
+    expect(daten.compensation).toEqual({ paid: 0, timeOff: 0 });
+  });
+
+  it('liefert für Zuschläge die Monatsaufteilung', async () => {
+    const service = await lade();
+    const daten = (await service.generateReportData({
+      type: 'bonus',
+      period: 'month',
+      dateRange: { start: new Date(2026, 6, 1), end: new Date(2026, 6, 31) },
+    } as never)) as Record<string, unknown>;
+
+    expect(daten.byType).toEqual({ night: 0, weekend: 0, holiday: 0, special: 0 });
+    expect(daten.monthlyBreakdown).toEqual([]);
+  });
+
+  it('liefert für die Zusammenfassung Arbeitszeit, Zuschläge und Leistung', async () => {
+    const service = await lade();
+    const daten = (await service.generateReportData({
+      type: 'summary',
+      period: 'quarter',
+      dateRange: { start: new Date(2026, 3, 1), end: new Date(2026, 5, 30) },
+    } as never)) as Record<string, unknown>;
+
+    expect(daten.period).toBe('quarter');
+    expect(daten.worktime).toMatchObject({ totalHours: 0 });
+    expect(daten.performance).toMatchObject({ trend: 'stable', goals: [] });
+  });
+
+  it('liefert für unbekannte Typen ein leeres Objekt', async () => {
+    const service = await lade();
+    await expect(
+      service.generateReportData({
+        type: 'gibt-es-nicht',
+        period: 'month',
+        dateRange: { start: new Date(), end: new Date() },
+      } as never)
+    ).resolves.toEqual({});
+  });
+});
+
+describe('bulkExport', () => {
+  it('liefert einen Sammel-Download-Pfad', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 20));
+    const service = await lade();
+
+    const versprechen = service.bulkExport(['r1', 'r2'], 'pdf');
+    await vi.advanceTimersByTimeAsync(3000);
+    const pfad = await versprechen;
+    expect(pfad).toMatch(/^\/reports\/bulk-export-\d+\.zip$/);
+    vi.useRealTimers();
+  });
+});

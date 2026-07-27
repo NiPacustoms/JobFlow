@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 
 /**
  * Performance-Hilfshooks: Debounce/Throttle (Suchfelder), optimierte Suche
@@ -11,6 +11,9 @@ import {
   useThrottledCallback,
   useOptimizedSearch,
   useVirtualScrolling,
+  useImageOptimization,
+  useMemoryUsage,
+  useCacheOptimization,
 } from '../usePerformance';
 
 beforeEach(() => {
@@ -170,5 +173,104 @@ describe('useVirtualScrolling', () => {
     expect(result.current.offsetY).toBe(800);
     expect(result.current.visibleItems[0]).toBe('Zeile 20');
     container.remove();
+  });
+});
+
+describe('useImageOptimization', () => {
+  it('meldet den Ladezustand und gibt die Quelle frei', () => {
+    const { result } = renderHook(() => useImageOptimization('/logo.png', { width: 200 }));
+    expect(result.current.isLoading).toBe(true);
+
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.optimizedSrc).toBe('/logo.png');
+    expect(result.current.error).toBeNull();
+  });
+
+  it('tut ohne Quelle nichts', () => {
+    const { result } = renderHook(() => useImageOptimization('', {}));
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(result.current.isLoading).toBe(true);
+  });
+});
+
+describe('useMemoryUsage', () => {
+  it('liefert null, wenn der Browser keine Speicherdaten meldet', () => {
+    const { result } = renderHook(() => useMemoryUsage());
+    expect(result.current).toBeNull();
+  });
+
+  it('berechnet die Auslastung aus den Heap-Werten', () => {
+    Object.defineProperty(performance, 'memory', {
+      value: { usedJSHeapSize: 25_000_000, totalJSHeapSize: 100_000_000 },
+      configurable: true,
+    });
+
+    const { result, unmount } = renderHook(() => useMemoryUsage());
+    expect(result.current).toEqual({
+      used: 25_000_000,
+      total: 100_000_000,
+      percentage: 25,
+    });
+
+    // Aktualisiert sich im Intervall
+    act(() => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(result.current?.percentage).toBe(25);
+
+    unmount();
+    // @ts-expect-error – Aufräumen des Stubs
+    delete (performance as { memory?: unknown }).memory;
+  });
+});
+
+describe('useCacheOptimization', () => {
+  it('lädt die Daten und liefert sie beim zweiten Aufruf aus dem Cache', async () => {
+    vi.useRealTimers();
+    const laden = vi.fn(async () => ({ stunden: 8 }));
+    const { result } = renderHook(() => useCacheOptimization('stunden-u1', laden));
+
+    await waitFor(() => expect(result.current.data).toEqual({ stunden: 8 }));
+    expect(result.current.isLoading).toBe(false);
+
+    await act(async () => {
+      await result.current.refetch();
+    });
+    // innerhalb der Frischezeit kein erneuter Abruf
+    expect(laden).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers();
+  });
+
+  it('meldet einen Ladefehler verständlich', async () => {
+    vi.useRealTimers();
+    const laden = vi.fn(async () => {
+      throw new Error('kein Zugriff');
+    });
+    const { result } = renderHook(() => useCacheOptimization('fehler', laden));
+
+    await waitFor(() => expect(result.current.error).toBe('kein Zugriff'));
+    expect(result.current.data).toBeNull();
+    expect(result.current.isLoading).toBe(false);
+    vi.useFakeTimers();
+  });
+
+  it('lädt nach Ablauf der Frischezeit erneut', async () => {
+    vi.useRealTimers();
+    const laden = vi.fn(async () => ({ stunden: 8 }));
+    const { result } = renderHook(() =>
+      useCacheOptimization('kurzlebig', laden, { staleTime: 0 })
+    );
+
+    await waitFor(() => expect(result.current.data).toBeTruthy());
+    await act(async () => {
+      await result.current.refetch();
+    });
+    expect(laden).toHaveBeenCalledTimes(2);
+    vi.useFakeTimers();
   });
 });

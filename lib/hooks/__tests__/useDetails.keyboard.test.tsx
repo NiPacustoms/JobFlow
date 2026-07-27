@@ -125,6 +125,146 @@ describe('useEmployeeDetails', () => {
   });
 });
 
+describe('useEmployeeDetails – Auswertungen', () => {
+  const nachweis = (overrides: Record<string, unknown> = {}) => ({
+    id: 't1',
+    userId: 'u1',
+    startDate: new Date(2026, 6, 20),
+    date: new Date(2026, 6, 20),
+    totalHours: 8,
+    nightHours: 0,
+    weekendHours: 0,
+    holidayHours: 0,
+    status: 'approved',
+    ...overrides,
+  });
+
+  const einsatz = (overrides: Record<string, unknown> = {}) => ({
+    id: 'a1',
+    userId: 'u1',
+    shiftId: 's1',
+    status: 'accepted',
+    assignedAt: new Date(2026, 6, 18),
+    ...overrides,
+  });
+
+  it('liefert Nullwerte ohne Nachweise und Einsätze', async () => {
+    const { result } = renderHook(() => useEmployeeDetails('u1'), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.statistics).toMatchObject({
+      totalHours: 0,
+      totalShifts: 0,
+      averageHoursPerShift: 0,
+      availabilityRate: 0,
+      lastActive: null,
+    });
+  });
+
+  it('summiert Stunden, Schichten und die Zusagequote', async () => {
+    getTimesheetsByUser.mockResolvedValue([
+      nachweis({ totalHours: 8, nightHours: 6, overtimeHours: 1 }),
+      nachweis({ id: 't2', totalHours: 6, weekendHours: 6, startDate: new Date(2026, 6, 25) }),
+    ]);
+    getAssignmentsByUser.mockResolvedValue([
+      einsatz(),
+      einsatz({ id: 'a2', status: 'completed' }),
+      einsatz({ id: 'a3', status: 'declined' }),
+      einsatz({ id: 'a4', status: 'pending' }),
+    ]);
+
+    const { result } = renderHook(() => useEmployeeDetails('u1'), { wrapper });
+    await waitFor(() => expect(result.current.timesheets).toHaveLength(2));
+
+    const statistik = result.current.statistics;
+    expect(statistik.totalHours).toBe(14);
+    // angenommen + abgeschlossen zählen als geleistete Schichten
+    expect(statistik.totalShifts).toBe(2);
+    expect(statistik.averageHoursPerShift).toBe(7);
+    expect(statistik.nightHours).toBe(6);
+    expect(statistik.weekendHours).toBe(6);
+    expect(statistik.overtimeHours).toBe(1);
+    // 1 von 4 Einsätzen angenommen
+    expect(statistik.availabilityRate).toBe(25);
+    expect(statistik.lastActive).toEqual(new Date(2026, 6, 25));
+  });
+
+  it('gruppiert Nachweise nach Monat', async () => {
+    getTimesheetsByUser.mockResolvedValue([
+      nachweis({ startDate: new Date(2026, 5, 15) }),
+      nachweis({ id: 't2', startDate: new Date(2026, 6, 20) }),
+      nachweis({ id: 't3', startDate: new Date(2026, 6, 25) }),
+    ]);
+    const { result } = renderHook(() => useEmployeeDetails('u1'), { wrapper });
+    await waitFor(() => expect(result.current.timesheets).toHaveLength(3));
+
+    expect(Object.keys(result.current.timesheetsByMonth).sort()).toEqual(['2026-06', '2026-07']);
+    expect(result.current.timesheetsByMonth['2026-07']).toHaveLength(2);
+  });
+
+  it('gruppiert Dokumente und Einsätze nach Status', async () => {
+    getDocumentsByUser.mockResolvedValue([
+      { id: 'd1', userId: 'u1', status: 'valid' },
+      { id: 'd2', userId: 'u1', status: 'expiring' },
+      { id: 'd3', userId: 'u1', status: 'expired' },
+      { id: 'd4', userId: 'u1', status: 'missing' },
+    ]);
+    getAssignmentsByUser.mockResolvedValue([
+      einsatz({ id: 'a1', status: 'pending' }),
+      einsatz({ id: 'a2', status: 'accepted' }),
+      einsatz({ id: 'a3', status: 'declined' }),
+      einsatz({ id: 'a4', status: 'completed' }),
+    ]);
+
+    const { result } = renderHook(() => useEmployeeDetails('u1'), { wrapper });
+    await waitFor(() => expect(result.current.documents).toHaveLength(4));
+
+    const nachStatus = result.current.documentsByStatus;
+    expect(nachStatus.valid).toHaveLength(1);
+    expect(nachStatus.expiring).toHaveLength(1);
+    expect(nachStatus.expired).toHaveLength(1);
+    expect(nachStatus.missing).toHaveLength(1);
+
+    const einsaetze = result.current.assignmentsByStatus;
+    expect(einsaetze.pending).toHaveLength(1);
+    expect(einsaetze.accepted).toHaveLength(1);
+    expect(einsaetze.declined).toHaveLength(1);
+    expect(einsaetze.completed).toHaveLength(1);
+  });
+
+  it('liefert Farben, Beschriftungen und Formatierungen', async () => {
+    const { result } = renderHook(() => useEmployeeDetails('u1'), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.getStatusColor('valid')).toBe('success');
+    expect(result.current.getStatusColor('expiring')).toBe('warning');
+    expect(result.current.getStatusColor('expired')).toBe('error');
+    expect(result.current.getStatusColor('missing')).toBe('default');
+    expect(result.current.getStatusColor('completed')).toBe('info');
+    expect(result.current.getStatusColor('x')).toBe('default');
+
+    expect(result.current.getStatusLabel('valid')).toBe('Gültig');
+    expect(result.current.getStatusLabel('expiring')).toBe('Läuft ab');
+    expect(result.current.getStatusLabel('missing')).toBe('Fehlt');
+    expect(result.current.getStatusLabel('accepted')).toBe('Angenommen');
+    expect(result.current.getStatusLabel('x')).toBe('Unbekannt');
+
+    expect(result.current.formatDate(new Date(2026, 6, 20))).toBe('20.07.2026');
+    expect(result.current.formatTime(new Date(2026, 6, 20, 6, 5))).toBe('06:05');
+    expect(result.current.formatDateTime(new Date(2026, 6, 20, 6, 5))).toContain('20.07.2026');
+  });
+
+  it('meldet die Ladezustände der einzelnen Quellen', async () => {
+    const { result } = renderHook(() => useEmployeeDetails('u1'), { wrapper });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.isLoadingEmployee).toBe(false);
+    expect(result.current.isLoadingTimesheets).toBe(false);
+    expect(result.current.isLoadingAssignments).toBe(false);
+    expect(result.current.isLoadingDocuments).toBe(false);
+  });
+});
+
 describe('useKeyboardNavigation', () => {
   /**
    * Der Hook liefert einen Ref und hängt den keydown-Listener im Effekt an das

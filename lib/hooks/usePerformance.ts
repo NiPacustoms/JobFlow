@@ -180,6 +180,11 @@ export const useImageOptimization = (src: string, options: {
   const [optimizedSrc, setOptimizedSrc] = useState(src);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Aufrufer übergeben die Optionen üblicherweise als Objektliteral. Als
+  // Effekt-Abhängigkeit wäre das bei jedem Render ein neuer Wert und würde
+  // Effekt → setState → Effekt endlos wiederholen; daher auf die
+  // Primitivwerte abstellen.
+  const { width, height, quality, format } = options;
 
   useEffect(() => {
     if (!src) return;
@@ -194,7 +199,7 @@ export const useImageOptimization = (src: string, options: {
     }, 100);
 
     return () => clearTimeout(timer);
-  }, [src, options]);
+  }, [src, width, height, quality, format]);
 
   return {
     optimizedSrc,
@@ -272,7 +277,8 @@ export const useCacheOptimization = <T>(
   const fetchData = useCallback(async () => {
     const cached = cache.current.get(key);
     const now = Date.now();
-    const staleTime = options.staleTime || 5 * 60 * 1000; // 5 minutes
+    // Bewusst ?? statt ||: staleTime 0 heißt "immer neu laden".
+    const staleTime = options.staleTime ?? 5 * 60 * 1000; // Standard: 5 Minuten
 
     if (cached && (now - cached.timestamp) < staleTime) {
       setData(cached.data);
