@@ -203,3 +203,125 @@ describe('Systeminformationen und Export', () => {
     expect(createObjectURL).toHaveBeenCalled();
   });
 });
+
+describe('Sicherung und Wiederherstellung', () => {
+  beforeEach(() => {
+    Object.defineProperty(URL, 'createObjectURL', {
+      value: vi.fn(() => 'blob:backup'),
+      configurable: true,
+    });
+  });
+
+  it('erzeugt eine Sicherungsdatei als Download-Link', async () => {
+    vi.useFakeTimers();
+    const service = await lade();
+    const versprechen = service.backupData();
+    await vi.advanceTimersByTimeAsync(2000);
+    await expect(versprechen).resolves.toBe('blob:backup');
+    vi.useRealTimers();
+  });
+
+  it('stellt eine gültige Sicherung wieder her', async () => {
+    vi.useFakeTimers();
+    const service = await lade();
+    const datei = {
+      text: async () => JSON.stringify({ timestamp: '2026-07-20T10:00:00Z', version: '1.0.0' }),
+    } as File;
+
+    const versprechen = service.restoreData(datei);
+    await vi.advanceTimersByTimeAsync(5000);
+    await expect(versprechen).resolves.toBeUndefined();
+    vi.useRealTimers();
+  });
+
+  it('lehnt eine Sicherung ohne Zeitstempel oder Version ab', async () => {
+    vi.useFakeTimers();
+    const service = await lade();
+    const datei = { text: async () => JSON.stringify({ irgendwas: true }) } as File;
+
+    const versprechen = service.restoreData(datei).catch(e => e);
+    await vi.advanceTimersByTimeAsync(5000);
+    const fehler = await versprechen;
+    expect(fehler).toBeInstanceOf(Error);
+    expect((fehler as Error).message).toContain('Ungültige Backup-Datei');
+    vi.useRealTimers();
+  });
+
+  it('meldet eine unlesbare Sicherungsdatei', async () => {
+    const service = await lade();
+    const datei = { text: async () => 'kein JSON' } as File;
+    await expect(service.restoreData(datei)).rejects.toThrow();
+  });
+});
+
+describe('Einstellungs-Import', () => {
+  it('übernimmt Einstellungen, Rollen und Dokumenttypen', async () => {
+    harness.setDocs([{ id: 'cfg', data: { systemName: 'Schichtklar' } }]);
+    const service = await lade();
+    const datei = {
+      text: async () =>
+        JSON.stringify({
+          settings: { systemName: 'Neu' },
+          roles: [{ name: 'Disponent', permissions: [] }],
+          documentTypes: [{ name: 'Führungszeugnis', category: 'Nachweis' }],
+        }),
+    } as File;
+
+    await service.importSettings(datei);
+    // Einstellungen aktualisiert bzw. angelegt, Rolle und Dokumenttyp hinzugefügt
+    expect(harness.writes.filter(w => w.art === 'add')).toHaveLength(2);
+  });
+
+  it('kommt ohne Dokumenttypen aus', async () => {
+    harness.setDocs([{ id: 'cfg', data: { systemName: 'Schichtklar' } }]);
+    const service = await lade();
+    const datei = {
+      text: async () => JSON.stringify({ settings: {}, roles: [] }),
+    } as File;
+
+    await expect(service.importSettings(datei)).resolves.toBeUndefined();
+  });
+
+  it('lehnt eine Datei ohne Einstellungen oder Rollen ab', async () => {
+    const service = await lade();
+    const datei = { text: async () => JSON.stringify({ irgendwas: true }) } as File;
+    await expect(service.importSettings(datei)).rejects.toThrow('Ungültige Import-Datei');
+  });
+});
+
+describe('getDocumentTypeById – Standardwerte', () => {
+  it('ergänzt fehlende Felder mit Vorgaben', async () => {
+    harness.setDoc({ id: 'd1', data: { name: 'Impfnachweis', category: 'Gesundheit' } });
+    const service = await lade();
+
+    const typ = await service.getDocumentTypeById('d1');
+    expect(typ).toMatchObject({
+      id: 'd1',
+      name: 'Impfnachweis',
+      validityPeriod: 365,
+      required: false,
+      status: 'active',
+    });
+    expect(typ?.createdAt).toBeInstanceOf(Date);
+  });
+
+  it('übernimmt hinterlegte Werte inkl. Zeitstempeln', async () => {
+    harness.setDoc({
+      id: 'd1',
+      data: {
+        name: 'Führungszeugnis',
+        category: 'Nachweis',
+        validityPeriod: 1095,
+        required: true,
+        status: 'inactive',
+        createdAt: ts(new Date(2026, 5, 1)),
+        updatedAt: ts(new Date(2026, 6, 1)),
+      },
+    });
+    const service = await lade();
+
+    const typ = await service.getDocumentTypeById('d1');
+    expect(typ).toMatchObject({ validityPeriod: 1095, required: true, status: 'inactive' });
+    expect(typ?.createdAt).toEqual(new Date(2026, 5, 1));
+  });
+});

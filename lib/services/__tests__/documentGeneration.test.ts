@@ -369,3 +369,102 @@ describe('generateDocument – Fehlerfälle', () => {
     );
   });
 });
+
+describe('generateDocument – Monatsbericht', () => {
+  it('berechnet Kennzahlen aus den Nachweisen des Monats', async () => {
+    getTimesheetsByDateRange.mockResolvedValue([
+      nachweis({ totalHours: 8, overtimeHours: 1, nightHours: 0 }),
+      nachweis({ id: 't2', totalHours: 7, overtimeHours: 0, nightHours: 6 }),
+    ] as never);
+    const service = await lade();
+
+    const dokument = await service.generateDocument({
+      type: 'monthly-report',
+      userId: 'u1',
+      dateRange: { start: new Date(2026, 6, 1), end: new Date(2026, 6, 31) },
+    });
+
+    expect(dokument.fileName).toMatch(/^Monatsbericht_\d{4}-\d{2}-\d{2}\.pdf$/);
+    expect(dokument.fileSize).toBeGreaterThan(0);
+    // Zeitraum wird auf Tagesgrenzen normalisiert
+    const [start, ende] = getTimesheetsByDateRange.mock.calls[0] as unknown as [Date, Date];
+    expect(start.getHours()).toBe(0);
+    expect(ende.getHours()).toBe(23);
+  });
+
+  it('erzeugt auch ohne Nachweise ein Dokument', async () => {
+    getTimesheetsByDateRange.mockResolvedValue([] as never);
+    const service = await lade();
+    const dokument = await service.generateDocument({
+      type: 'monthly-report',
+      userId: 'u1',
+      dateRange: { start: new Date(2026, 6, 1), end: new Date(2026, 6, 31) },
+    });
+    expect(dokument.url).toBe('https://example/doc.pdf');
+  });
+
+  it('weist auf abgeschnittene Listen hin (mehr als 50 Einträge)', async () => {
+    getTimesheetsByDateRange.mockResolvedValue(
+      Array.from({ length: 55 }, (_, i) => nachweis({ id: `t${i}` })) as never
+    );
+    const service = await lade();
+    const dokument = await service.generateDocument({
+      type: 'monthly-report',
+      userId: 'u1',
+      dateRange: { start: new Date(2026, 6, 1), end: new Date(2026, 6, 31) },
+    });
+    expect(dokument.fileSize).toBeGreaterThan(0);
+  });
+
+  it('erzeugt den Bericht trotz Ladefehlers der Nachweise', async () => {
+    getTimesheetsByDateRange.mockRejectedValue(new Error('kein Zugriff'));
+    const service = await lade();
+    const dokument = await service.generateDocument({
+      type: 'monthly-report',
+      userId: 'u1',
+      dateRange: { start: new Date(2026, 6, 1), end: new Date(2026, 6, 31) },
+    });
+    expect(dokument.url).toBe('https://example/doc.pdf');
+  });
+});
+
+describe('generateDocument – Schichtzusammenfassung mit Daten', () => {
+  it('listet die Schichten des Tages mit Status', async () => {
+    getTimesheetsByDateRange.mockResolvedValue([
+      nachweis({ status: 'submitted' }),
+      nachweis({ id: 't2', status: 'rejected', startTime: undefined, endTime: undefined }),
+    ] as never);
+    const service = await lade();
+
+    const dokument = await service.generateDocument({
+      type: 'shift-summary',
+      userId: 'u1',
+      dateRange: { start: new Date(2026, 6, 20), end: new Date(2026, 6, 20) },
+    });
+    expect(dokument.fileName).toContain('Schichtzusammenfassung');
+  });
+
+  it('erzeugt die Zusammenfassung auch bei Ladefehlern', async () => {
+    getTimesheetsByDateRange.mockRejectedValue(new Error('kein Zugriff'));
+    const service = await lade();
+    const dokument = await service.generateDocument({
+      type: 'shift-summary',
+      userId: 'u1',
+      dateRange: { start: new Date(2026, 6, 20), end: new Date(2026, 6, 20) },
+    });
+    expect(dokument.url).toBe('https://example/doc.pdf');
+  });
+});
+
+describe('generateDocument – Dateinamen', () => {
+  it.each([
+    ['timesheet-report', 'Zeiterfassungsbericht'],
+    ['assignment-confirmation', 'Einsatzbestätigung'],
+    ['shift-summary', 'Schichtzusammenfassung'],
+    ['custom-report', 'Bericht'],
+  ])('benennt %s als %s', async (typ, erwartet) => {
+    const service = await lade();
+    const dokument = await service.generateDocument({ type: typ as never, userId: 'u1' });
+    expect(dokument.fileName).toContain(erwartet);
+  });
+});
