@@ -9,7 +9,7 @@ unterschriebener Nachweis ergibt, braucht einen.
 
 | Ebene | Befehl | Umfang |
 | --- | --- | --- |
-| Unit / Service (Client) | `npm run test:unit` | 1424 Tests, jsdom, Firestore gemockt |
+| Unit / Service (Client) | `npm run test:unit` | 1457 Tests, jsdom, Firestore gemockt |
 | Unit (Cloud Functions) | `npm run test:functions` | 30 Tests, Node, Admin-SDK gemockt |
 | Firestore-Rules | `npm run test:rules` | Mandantenisolation, Rechte-Eskalation, Timesheet-Create |
 | End-to-End | `npm run test:e2e` | 34 Playwright-Tests (Mock-Auth) |
@@ -36,7 +36,7 @@ unbemerkt zurückgehen.
 | `lib/utils/shiftStatus.ts`, `format.ts`, `authz.ts`, `sanitize.ts`, `dataUrl.ts` | 100 % |
 | `lib/validations/**` | 90 %+ – jede Formular-/API-Validierung |
 
-Der globale Wert (aktuell ~78 % Statements, ~71 % Branches) ist bewusst niedriger: Er umfasst
+Der globale Wert (aktuell ~79 % Statements, ~73 % Branches) ist bewusst niedriger: Er umfasst
 auch reine Firestore-Verdrahtung und React-Hooks, deren Verhalten über die
 E2E-Suite und die Rules-Tests geprüft wird. Er ist als Ratsche gesetzt und darf
 nur nach oben angepasst werden.
@@ -88,3 +88,20 @@ Jeder in den Debugging-Durchgängen gefundene Fehler hat einen Test, der ihn
 festnagelt – unter anderem: Seite 2 der Mitarbeiterliste, abgelehnte Nachweise
 im Wochenlimit, Sonntag in `getStartOfWeek`, Feldkollision `pdfUrl`,
 Signaturvollständigkeit per Längenvergleich, Verlust der Offline-Queue.
+
+Beim Ausbau der Abdeckung kamen weitere echte Fehler zutage, die ebenfalls mit
+Test behoben sind:
+
+- `dataUrlToBlob` verwarf den MIME-Typ der Signatur (PNG wurde als
+  `application/octet-stream` hochgeladen).
+- `getStartOfWeek` verschob den Sonntag in die Folgewoche – das Wochenlimit
+  griff sonntags nie (Client **und** Cloud Function).
+- `unassignShift`/`declineAssignment` gaben die Schichtkapazität nicht frei.
+- Die Signatur-Einbettung im PDF konnte am `img.onload` hängen bleiben.
+- `useTimesheetHistory` warf einen `RangeError` bei Nachweisen ohne
+  `startDate`.
+- `employeeFacilities.getAll` bildete die Koordinaten nicht ab, wodurch
+  `getNearby` immer eine leere Liste lieferte.
+- Die HTML-Exporte (Excel/PDF) fügten Firestore-Werte ungeprüft ein; Markup in
+  einem Namen wurde beim Öffnen der Datei ausgeführt. Werte, Spaltenköpfe und
+  Titel werden jetzt HTML-maskiert.
