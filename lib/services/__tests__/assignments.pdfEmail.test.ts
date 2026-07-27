@@ -267,3 +267,172 @@ describe('generateSignaturePDFAndSendEmails', () => {
     expect(sendSignatureEmail).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('checkConflict – Zeitüberlappung', () => {
+  const schichtDoc = (id: string, daten: Record<string, unknown>) => ({ id, data: daten });
+
+  it('meldet einen Konflikt mit einer bestehenden Schicht', async () => {
+    harness.setDocs([einsatz('a-alt', { status: 'accepted', shiftId: 's-alt' })]);
+    // getDoc-Reihenfolge: neue Schicht, dann die Bestandsschicht
+    harness.setDoc(
+      schichtDoc('s-neu', { date: '2026-07-20', startTime: '12:00', endTime: '20:00' })
+    );
+    const service = await lade();
+
+    const ergebnis = await service.checkConflict('u1', 's-neu');
+    // Der Harness liefert für beide getDoc-Aufrufe dasselbe Dokument – die
+    // Schicht überlappt sich damit mit sich selbst, was den Konfliktpfad prüft.
+    expect(ergebnis?.hasConflict).toBe(true);
+    expect(ergebnis?.conflictDetails).toContain('Zeitkonflikt');
+  });
+
+  it('liefert null, wenn die neue Schicht nicht existiert', async () => {
+    harness.setDocs([]);
+    harness.setDoc(null);
+    const service = await lade();
+    await expect(service.checkConflict('u1', 'weg')).resolves.toBeNull();
+  });
+
+  it('meldet ohne bestehende Einsätze keinen Konflikt', async () => {
+    harness.setDocs([]);
+    harness.setDoc(schichtDoc('s-neu', { date: '2026-07-20', startTime: '06:00', endTime: '14:00' }));
+    const service = await lade();
+
+    await expect(service.checkConflict('u1', 's-neu')).resolves.toEqual({ hasConflict: false });
+  });
+
+  it('meldet ohne companyId keinen Konflikt', async () => {
+    const { getCompanyIdFromAuth } = await import('@/lib/utils/companyId');
+    vi.mocked(getCompanyIdFromAuth).mockResolvedValue(null);
+    const service = await lade();
+
+    await expect(service.checkConflict('u1', 's-neu')).resolves.toEqual({ hasConflict: false });
+  });
+});
+
+describe('checkTimeOverlap – Nachtschichten', () => {
+  it('erkennt Überlappungen am selben Tag', async () => {
+    const service = await lade();
+    expect(
+      service.checkTimeOverlap(
+        { date: '2026-07-20', startTime: '06:00', endTime: '14:00' },
+        { date: '2026-07-20', startTime: '12:00', endTime: '20:00' }
+      )
+    ).toBe(true);
+  });
+
+  it('lässt lückenlos aufeinanderfolgende Schichten zu', async () => {
+    const service = await lade();
+    expect(
+      service.checkTimeOverlap(
+        { date: '2026-07-20', startTime: '06:00', endTime: '14:00' },
+        { date: '2026-07-20', startTime: '14:00', endTime: '22:00' }
+      )
+    ).toBe(false);
+  });
+
+  it('erkennt Konflikte mit Nachtschichten über Mitternacht', async () => {
+    const service = await lade();
+    // Nachtschicht 22:00–06:00 und Frühdienst am Folgetag 05:00–13:00
+    expect(
+      service.checkTimeOverlap(
+        { date: '2026-07-20', startTime: '22:00', endTime: '06:00' },
+        { date: '2026-07-21', startTime: '05:00', endTime: '13:00' }
+      )
+    ).toBe(true);
+  });
+
+  it('meldet keinen Konflikt an verschiedenen Tagen', async () => {
+    const service = await lade();
+    expect(
+      service.checkTimeOverlap(
+        { date: '2026-07-20', startTime: '06:00', endTime: '14:00' },
+        { date: '2026-07-22', startTime: '06:00', endTime: '14:00' }
+      )
+    ).toBe(false);
+  });
+
+  it('rechnet Uhrzeiten in Millisekunden um', async () => {
+    const service = await lade();
+    expect(service.timeToMs('00:00')).toBe(0);
+    expect(service.timeToMs('06:30')).toBe(6.5 * 60 * 60 * 1000);
+    expect(service.timeToMs('23:59')).toBe((23 * 60 + 59) * 60 * 1000);
+  });
+});
+
+describe('bulkAssign', () => {
+  it('legt für jeden Mitarbeiter eine Zuweisung mit der companyId der Schicht an', async () => {
+    harness.setDoc({ id: 's1', data: { companyId: 'firmaSchicht' } });
+    const service = await lade();
+
+    const ids = await service.bulkAssign('s1', ['u1', 'u2', 'u3']);
+    expect(ids).toHaveLength(3);
+
+    const adds = harness.writes.filter(w => w.art === 'add');
+    expect(adds).toHaveLength(3);
+    expect(adds[0].daten).toMatchObject({
+      shiftId: 's1',
+      companyId: 'firmaSchicht',
+      status: 'assigned',
+    });
+  });
+
+  it('weicht auf die companyId aus dem Token aus', async () => {
+    harness.setDoc({ id: 's1', data: {} });
+    const service = await lade();
+
+    await service.bulkAssign('s1', ['u1']);
+    const add = harness.writes.find(w => w.art === 'add')?.daten as Record<string, unknown>;
+    expect(add.companyId).toBe('firmaA');
+  });
+
+  it('wirft, wenn die Schicht fehlt', async () => {
+    harness.setDoc(null);
+    const service = await lade();
+    await expect(service.bulkAssign('weg', ['u1'])).rejects.toThrow('Shift not found');
+  });
+
+  it('wirft ohne ermittelbare companyId', async () => {
+    const { getCompanyIdFromAuth } = await import('@/lib/utils/companyId');
+    vi.mocked(getCompanyIdFromAuth).mockResolvedValue(null);
+    harness.setDoc({ id: 's1', data: {} });
+    const service = await lade();
+
+    await expect(service.bulkAssign('s1', ['u1'])).rejects.toThrow('No companyId');
+  });
+});
+
+describe('getMyActiveAssignments – companyId-Auflösung', () => {
+  it('filtert mit der companyId aus dem Token', async () => {
+    harness.setDocs([einsatz('a1', { status: 'accepted' })]);
+    const service = await lade();
+
+    const liste = await service.getMyActiveAssignments('u1');
+    expect(liste).toHaveLength(1);
+    expect(harness.hatWhere('companyId', 'firmaA')).toBe(true);
+  });
+
+  it('holt die companyId ersatzweise aus dem Nutzerdokument', async () => {
+    const { getCompanyIdFromAuth } = await import('@/lib/utils/companyId');
+    vi.mocked(getCompanyIdFromAuth).mockResolvedValue(null);
+    harness.setDoc({ id: 'u1', data: { companyId: 'firmaAusNutzer' } });
+    harness.setDocs([einsatz('a1', { status: 'accepted', companyId: 'firmaAusNutzer' })]);
+    const service = await lade();
+
+    const liste = await service.getMyActiveAssignments('u1');
+    expect(liste).toHaveLength(1);
+    expect(harness.hatWhere('companyId', 'firmaAusNutzer')).toBe(true);
+  });
+
+  it('fragt notfalls ohne companyId-Filter ab', async () => {
+    const { getCompanyIdFromAuth } = await import('@/lib/utils/companyId');
+    vi.mocked(getCompanyIdFromAuth).mockResolvedValue(null);
+    harness.setDoc(null); // kein Nutzerdokument
+    harness.setDocs([einsatz('a1', { status: 'accepted' })]);
+    const service = await lade();
+
+    const liste = await service.getMyActiveAssignments('u1');
+    expect(liste).toHaveLength(1);
+    expect(harness.hatWhere('userId', 'u1')).toBe(true);
+  });
+});
