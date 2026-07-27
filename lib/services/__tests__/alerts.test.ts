@@ -174,3 +174,149 @@ describe('alertService – Regeln und Einstellungen', () => {
     expect(harness.writes.some(w => w.art === 'set' || w.art === 'update')).toBe(true);
   });
 });
+
+describe('alertService.subscribeToAlerts', () => {
+  const schnappschuss = (docs: Array<{ id: string; data: Record<string, unknown> }>) => ({
+    docs: docs.map(d => ({ id: d.id, data: () => d.data })),
+  });
+
+  it('liefert Warnungen eines Nutzers absteigend sortiert (max. 20)', async () => {
+    const firestore = await import('firebase/firestore');
+    let handler: ((snap: unknown) => void) | undefined;
+    vi.mocked(firestore.onSnapshot).mockImplementation(((
+      _q: unknown,
+      onNext: (snap: unknown) => void
+    ) => {
+      handler = onNext;
+      return () => undefined;
+    }) as never);
+
+    const service = await lade();
+    const callback = vi.fn();
+    const unsub = service.subscribeToAlerts('u1', callback, 'firmaA');
+
+    handler?.(
+      schnappschuss([
+        alertDoc('alt', { createdAt: ts(new Date(2026, 6, 1)) }),
+        alertDoc('neu', { createdAt: ts(new Date(2026, 6, 20)) }),
+      ])
+    );
+
+    const gemeldet = callback.mock.calls.at(-1)?.[0] as Array<{ id: string }>;
+    expect(gemeldet.map(a => a.id)).toEqual(['neu', 'alt']);
+    expect(typeof unsub).toBe('function');
+  });
+
+  it('meldet bei Berechtigungsfehlern eine leere Liste', async () => {
+    const firestore = await import('firebase/firestore');
+    vi.mocked(firestore.onSnapshot).mockImplementation(((
+      _q: unknown,
+      _onNext: unknown,
+      onError: (e: unknown) => void
+    ) => {
+      onError({ code: 'permission-denied', message: 'permission' });
+      return () => undefined;
+    }) as never);
+
+    const service = await lade();
+    const callback = vi.fn();
+    service.subscribeToAlerts(null, callback, 'firmaA');
+    expect(callback).toHaveBeenCalledWith([]);
+  });
+
+  it('fängt Fehler beim Einrichten des Abos ab', async () => {
+    const firestore = await import('firebase/firestore');
+    vi.mocked(firestore.onSnapshot).mockImplementation((() => {
+      throw new Error('kaputt');
+    }) as never);
+
+    const service = await lade();
+    const callback = vi.fn();
+    const unsub = service.subscribeToAlerts('u1', callback);
+    expect(callback).toHaveBeenCalledWith([]);
+    expect(() => unsub()).not.toThrow();
+  });
+});
+
+describe('alertService – automatische Prüfungen', () => {
+  it('legt Warnungen für ablaufende und abgelaufene Dokumente an', async () => {
+    const service = await lade();
+    vi.spyOn(service, 'getExpiringDocuments').mockResolvedValue([
+      { id: 'd1', userId: 'u1', type: 'Führungszeugnis' } as never,
+    ]);
+    vi.spyOn(service, 'getExpiredDocuments').mockResolvedValue([
+      { id: 'd2', userId: 'u2', type: 'Impfnachweis' } as never,
+    ]);
+    const createSpy = vi.spyOn(service, 'create').mockResolvedValue({} as never);
+
+    await service.checkDocumentAlerts();
+    expect(createSpy).toHaveBeenCalledTimes(2);
+    expect(createSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Dokument läuft bald ab', severity: 'medium' })
+    );
+    expect(createSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Dokument abgelaufen', severity: 'high' })
+    );
+  });
+
+  it('legt Warnungen für bevorstehende und unbesetzte Schichten an', async () => {
+    const service = await lade();
+    vi.spyOn(service, 'getUpcomingShifts').mockResolvedValue([
+      { id: 's1', title: 'Frühdienst', startTime: '06:00', facilityId: 'f1' } as never,
+    ]);
+    vi.spyOn(service, 'getUnfilledShifts').mockResolvedValue([
+      { id: 's2', title: 'Nachtdienst', facilityId: 'f1' } as never,
+    ]);
+    const createSpy = vi.spyOn(service, 'create').mockResolvedValue({} as never);
+
+    await service.checkShiftAlerts();
+    expect(createSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Schicht beginnt morgen', severity: 'low' })
+    );
+    expect(createSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Schicht noch nicht besetzt', severity: 'medium' })
+    );
+  });
+
+  it('legt Warnungen für Tages- und Wochenüberstunden an', async () => {
+    const service = await lade();
+    vi.spyOn(service, 'getDailyOvertimeUsers').mockResolvedValue([
+      { id: 'u1', displayName: 'Anna Muster' } as never,
+    ]);
+    vi.spyOn(service, 'getWeeklyOvertimeUsers').mockResolvedValue([
+      { id: 'u2', displayName: 'Bea Beispiel' } as never,
+    ]);
+    const createSpy = vi.spyOn(service, 'create').mockResolvedValue({} as never);
+
+    await service.checkOvertimeAlerts();
+    expect(createSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Tägliche Überstunden', userId: 'u1' })
+    );
+    expect(createSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Wöchentliche Überstunden', severity: 'high' })
+    );
+  });
+
+  it('schluckt Fehler der Prüfungen, statt den Aufrufer zu stören', async () => {
+    const service = await lade();
+    vi.spyOn(service, 'getExpiringDocuments').mockRejectedValue(new Error('kaputt'));
+    vi.spyOn(service, 'getUpcomingShifts').mockRejectedValue(new Error('kaputt'));
+    vi.spyOn(service, 'getDailyOvertimeUsers').mockRejectedValue(new Error('kaputt'));
+
+    await expect(service.checkDocumentAlerts()).resolves.toBeUndefined();
+    await expect(service.checkShiftAlerts()).resolves.toBeUndefined();
+    await expect(service.checkOvertimeAlerts()).resolves.toBeUndefined();
+  });
+
+  it('liefert für die Platzhalter-Abfragen leere Listen', async () => {
+    // Spione der vorherigen Tests auf dem Service-Singleton zurücknehmen
+    vi.restoreAllMocks();
+    const service = await lade();
+    await expect(service.getExpiringDocuments()).resolves.toEqual([]);
+    await expect(service.getExpiredDocuments()).resolves.toEqual([]);
+    await expect(service.getUpcomingShifts()).resolves.toEqual([]);
+    await expect(service.getUnfilledShifts()).resolves.toEqual([]);
+    await expect(service.getDailyOvertimeUsers()).resolves.toEqual([]);
+    await expect(service.getWeeklyOvertimeUsers()).resolves.toEqual([]);
+  });
+});

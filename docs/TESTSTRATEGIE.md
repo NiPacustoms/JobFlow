@@ -9,7 +9,7 @@ unterschriebener Nachweis ergibt, braucht einen.
 
 | Ebene | Befehl | Umfang |
 | --- | --- | --- |
-| Unit / Service (Client) | `npm run test:unit` | 1077 Tests, jsdom, Firestore gemockt |
+| Unit / Service (Client) | `npm run test:unit` | 1182 Tests, jsdom, Firestore gemockt |
 | Unit (Cloud Functions) | `npm run test:functions` | 30 Tests, Node, Admin-SDK gemockt |
 | Firestore-Rules | `npm run test:rules` | Mandantenisolation, Rechte-Eskalation, Timesheet-Create |
 | End-to-End | `npm run test:e2e` | 34 Playwright-Tests (Mock-Auth) |
@@ -36,7 +36,7 @@ unbemerkt zurückgehen.
 | `lib/utils/shiftStatus.ts`, `format.ts`, `authz.ts`, `sanitize.ts`, `dataUrl.ts` | 100 % |
 | `lib/validations/**` | 90 %+ – jede Formular-/API-Validierung |
 
-Der globale Wert (aktuell ~63 % Statements, ~67 % Branches) ist bewusst niedriger: Er umfasst
+Der globale Wert (aktuell ~68 % Statements, ~68 % Branches) ist bewusst niedriger: Er umfasst
 auch reine Firestore-Verdrahtung und React-Hooks, deren Verhalten über die
 E2E-Suite und die Rules-Tests geprüft wird. Er ist als Ratsche gesetzt und darf
 nur nach oben angepasst werden.

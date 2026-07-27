@@ -237,3 +237,82 @@ describe('notificationService – Versand', () => {
     );
   });
 });
+
+describe('notificationService.getPaginated', () => {
+  it('liefert eine Seite mit Gesamtzahl und hasMore-Kennzeichen', async () => {
+    harness.setDocs([hinweis('n1'), hinweis('n2')]);
+    harness.count = 7;
+    const service = await lade();
+
+    const seite = await service.getPaginated(2);
+    expect(seite.notifications).toHaveLength(2);
+    expect(seite.hasMore).toBe(true); // Seite ist voll
+    expect(seite.totalCount).toBe(7);
+  });
+
+  it('meldet hasMore=false bei nicht voller Seite', async () => {
+    harness.setDocs([hinweis('n1')]);
+    harness.count = 1;
+    const service = await lade();
+
+    const seite = await service.getPaginated(20);
+    expect(seite.hasMore).toBe(false);
+  });
+
+  it('blättert mit einem Cursor weiter', async () => {
+    harness.setDocs([hinweis('n3')]);
+    harness.count = 3;
+    const service = await lade();
+
+    const seite = await service.getPaginated(2, { id: 'n2' });
+    expect(seite.notifications[0].id).toBe('n3');
+  });
+
+  it('liefert ohne companyId eine leere Seite', async () => {
+    const { getCompanyIdFromAuth } = await import('@/lib/utils/companyId');
+    vi.mocked(getCompanyIdFromAuth).mockResolvedValue(null);
+    const service = await lade();
+
+    await expect(service.getPaginated()).resolves.toEqual({
+      notifications: [],
+      hasMore: false,
+      totalCount: 0,
+    });
+  });
+});
+
+describe('notificationService.getSettings – Kanalzuordnung', () => {
+  it('bildet Kanäle und Typ-Kanäle mit sicheren Standardwerten ab', async () => {
+    harness.setDoc({
+      id: 'u1',
+      data: {
+        smsEnabled: true,
+        channels: { app: false, sms: true },
+        typeChannels: {
+          schicht: { email: false, sms: true },
+          kaputt: 'kein-objekt',
+        },
+        preferredLocale: 'en',
+      },
+    });
+    const service = await lade();
+
+    const einstellungen = await service.getSettings('u1');
+    expect(einstellungen.channels).toEqual({ app: false, email: true, sms: true });
+    expect(einstellungen.typeChannels).toEqual({
+      schicht: { app: true, email: false, sms: true },
+    });
+    expect(einstellungen.preferredLocale).toBe('en');
+  });
+});
+
+describe('notificationService.getStats', () => {
+  it('zählt gesamt, ungelesen und wichtig über Server-Counts', async () => {
+    harness.count = 4;
+    const service = await lade();
+
+    const stats = await service.getStats();
+    // Der Harness liefert für alle Count-Abfragen denselben Zähler
+    expect(stats).toEqual({ total: 4, unread: 4, read: 0, important: 4 });
+  });
+});
