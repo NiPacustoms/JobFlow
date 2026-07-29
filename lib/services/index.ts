@@ -21,7 +21,6 @@ export { userService } from './users';
 export { timesService } from './times';
 export { employeeFacilitiesService } from './employeeFacilities';
 export { adminSettingsService } from './adminSettings';
-export { employeeReportsService } from './employeeReports';
 export { holidayProvider } from './holidayProvider';
 export { templateService } from './templateService';
 

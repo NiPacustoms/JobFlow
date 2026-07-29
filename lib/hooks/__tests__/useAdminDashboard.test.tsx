@@ -314,7 +314,7 @@ describe('useAdminDashboard – Diagramme und Warnungen', () => {
     expect(aktivitaeten[1]).toMatchObject({ message: 'user.login', status: 'success' });
   });
 
-  it('zählt Schichten nach Typ und liefert (noch) leere Ranglisten', async () => {
+  it('zählt Schichten nach Typ', async () => {
     getAllShifts.mockResolvedValue([
       { id: 's1', date: '2026-07-20', startTime: '06:00', endTime: '14:00', status: 'open', type: 'early' },
       { id: 's2', date: '2026-07-20', startTime: '14:00', endTime: '22:00', status: 'open', type: 'early' },
@@ -326,8 +326,6 @@ describe('useAdminDashboard – Diagramme und Warnungen', () => {
     const proTyp = result.current.getShiftStatsByType();
     expect(proTyp.early).toBe(2);
     expect(proTyp.unknown).toBe(1);
-    expect(result.current.getTopPerformers()).toEqual([]);
-    expect(result.current.getTopFacilities()).toEqual([]);
   });
 
   it('navigiert auch in den Berichtsbereich', async () => {

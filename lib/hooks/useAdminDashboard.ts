@@ -208,16 +208,6 @@ export const useAdminDashboard = () => {
     return stats;
   };
 
-  const getTopPerformers = () => {
-    // Optional V2: Aus abgeschlossenen Einsätzen und Stunden aggregieren.
-    return [];
-  };
-
-  const getTopFacilities = () => {
-    // Optional V2: Nach Schicht-Besetzungsquote sortieren.
-    return [];
-  };
-
   const getRecentActivities = () => {
     return allActivities.map(activity => ({
       type: activity.type,
@@ -473,8 +463,6 @@ export const useAdminDashboard = () => {
     getUserStatsByRole,
     getAssignmentStatsByStatus,
     getShiftStatsByType,
-    getTopPerformers,
-    getTopFacilities,
     isLoading,
     error: null,
     pendingWorkTimesheets: [] as Timesheet[],

@@ -4,8 +4,8 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 /**
- * Sammelaktionen (Mehrfachauswahl in Listen), Personal-Gruppen und die
- * Einrichtungs-Sicht des Mitarbeiters (Favoriten, Anfahrt, Statistik).
+ * Sammelaktionen (Mehrfachauswahl in Listen) und die Einrichtungs-Sicht des
+ * Mitarbeiters (Favoriten, Anfahrt, Statistik).
  */
 
 const mockUser = { id: 'u1', companyId: 'firmaA', role: 'admin' };
@@ -35,7 +35,6 @@ import {
   createBulkExportOperation,
   type BulkOperation,
 } from '../useBulkOperations';
-import { useStaffGroups } from '../useStaffGroups';
 import { useEmployeeFacilities } from '../useEmployeeFacilities';
 import { toast } from '@/lib/utils/toast';
 
@@ -183,48 +182,6 @@ describe('useBulkOperations', () => {
     expect(exportieren).toHaveBeenCalledWith(zeilen);
     expect(delOp.requiresConfirmation).toBe(true);
     expect(exportOp.requiresConfirmation).toBe(false);
-  });
-});
-
-describe('useStaffGroups', () => {
-  it('liefert leere Gruppen und Nullstatistik (Service noch nicht implementiert)', async () => {
-    const { result } = renderHook(() => useStaffGroups(), { wrapper });
-    await waitFor(() => expect(result.current.loadingGroups).toBe(false));
-
-    expect(result.current.groups).toEqual([]);
-    expect(result.current.stats).toMatchObject({
-      total: 0,
-      myGroups: 0,
-      totalMembers: 0,
-      avgMembersPerGroup: '0',
-    });
-  });
-
-  it('behandelt fehlschlagende Mutationen ohne Absturz', async () => {
-    const { result } = renderHook(() => useStaffGroups(), { wrapper });
-    await waitFor(() => expect(result.current.loadingGroups).toBe(false));
-
-    act(() => {
-      result.current.createGroup({ name: 'Frühdienst-Team', memberIds: [] });
-      result.current.updateGroup('g1', { name: 'Neu' });
-      result.current.addMember('g1', 'u2');
-      result.current.removeMember('g1', 'u2');
-    });
-    await waitFor(() => expect(result.current.isCreating).toBe(false));
-    await waitFor(() => expect(result.current.isUpdating).toBe(false));
-  });
-
-  it('löscht nur nach bestätigter Rückfrage', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    const { result } = renderHook(() => useStaffGroups(), { wrapper });
-    await waitFor(() => expect(result.current.loadingGroups).toBe(false));
-
-    act(() => result.current.deleteGroup('g1'));
-    expect(result.current.isDeleting).toBe(false);
-
-    confirmSpy.mockReturnValue(true);
-    act(() => result.current.deleteGroup('g1'));
-    await waitFor(() => expect(result.current.isDeleting).toBe(false));
   });
 });
 

@@ -158,7 +158,6 @@ export default function AdminSettingsPage() {
     settings,
     roles,
     documentTypes,
-    systemInfo,
     isLoading,
     error,
     updateSettings,
@@ -501,78 +500,6 @@ export default function AdminSettingsPage() {
             </Box>
           </CardContent>
         </GlassCard>
-
-        {/* System Status */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid size={{ xs: 6, sm: 6, md: 3 }}>
-            <GlassCard hover={false} sx={{ height: '100%' }}>
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Typography
-                  variant="h4"
-                  color="success.main"
-                  className="tabular-nums"
-                  sx={{ fontWeight: 700 }}
-                >
-                  {systemInfo.status}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  System-Status
-                </Typography>
-              </CardContent>
-            </GlassCard>
-          </Grid>
-          <Grid size={{ xs: 6, sm: 6, md: 3 }}>
-            <GlassCard hover={false} sx={{ height: '100%' }}>
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Typography
-                  variant="h4"
-                  color="primary"
-                  className="tabular-nums"
-                  sx={{ fontWeight: 700 }}
-                >
-                  {systemInfo.version}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Version
-                </Typography>
-              </CardContent>
-            </GlassCard>
-          </Grid>
-          <Grid size={{ xs: 6, sm: 6, md: 3 }}>
-            <GlassCard hover={false} sx={{ height: '100%' }}>
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Typography
-                  variant="h4"
-                  color="info.main"
-                  className="tabular-nums"
-                  sx={{ fontWeight: 700 }}
-                >
-                  {systemInfo.uptime}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Uptime
-                </Typography>
-              </CardContent>
-            </GlassCard>
-          </Grid>
-          <Grid size={{ xs: 6, sm: 6, md: 3 }}>
-            <GlassCard hover={false} sx={{ height: '100%' }}>
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Typography
-                  variant="h4"
-                  color="warning.main"
-                  className="tabular-nums"
-                  sx={{ fontWeight: 700 }}
-                >
-                  {systemInfo.storage}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Speicher
-                </Typography>
-              </CardContent>
-            </GlassCard>
-          </Grid>
-        </Grid>
 
         {/* Actions */}
         <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>

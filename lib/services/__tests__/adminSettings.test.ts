@@ -186,11 +186,6 @@ describe('Dokumenttypen', () => {
 });
 
 describe('Systeminformationen und Export', () => {
-  it('liefert Systeminformationen', async () => {
-    const service = await lade();
-    const info = await service.getSystemInfo();
-    expect(info).toBeTruthy();
-  });
 
   it('exportiert die Einstellungen als herunterladbare Datei', async () => {
     // jsdom kennt createObjectURL nicht – für den Export-Pfad nachrüsten.

@@ -23,7 +23,6 @@ export interface NurseScheduleActions {
   acceptAssignment: (assignmentId: string) => Promise<void>;
   declineAssignment: (assignmentId: string, reason?: string) => Promise<void>;
   requestShift: (shiftId: string, message?: string) => Promise<void>;
-  checkConflicts: (shiftId: string) => Promise<TimeConflict[]>;
 }
 
 export const useNurseSchedule = (view: 'week' | 'month' = 'week', date?: Date) => {
@@ -157,10 +156,6 @@ export const useNurseSchedule = (view: 'week' | 'month' = 'week', date?: Date) =
     });
   };
 
-  const checkConflicts = async (_shiftId: string): Promise<TimeConflict[]> => {
-    return [];
-  };
-
   // Zentrale Schichttyp-Farbe (lib/design-tokens)
   const getShiftTypeColor = (type: Shift['type']) => getShiftTypeColorToken(type);
 
@@ -252,13 +247,6 @@ export const useNurseSchedule = (view: 'week' | 'month' = 'week', date?: Date) =
     }
   };
 
-  // Check for break rules (11 hours between shifts)
-  const checkBreakRule = (_assignment: Assignment): boolean => {
-    // This would need to be implemented with actual shift data
-    // For now, return true (no break rule violation)
-    return true;
-  };
-
   const isLoading = loadingAssignments || loadingShifts;
   const error = acceptAssignment.error || declineAssignment.error || requestShift.error;
 
@@ -280,7 +268,6 @@ export const useNurseSchedule = (view: 'week' | 'month' = 'week', date?: Date) =
     requestShift: async (shiftId: string, message?: string) => {
       await requestShift.mutateAsync({ shiftId, message });
     },
-    checkConflicts,
   };
 
   return {
@@ -294,7 +281,6 @@ export const useNurseSchedule = (view: 'week' | 'month' = 'week', date?: Date) =
     getMissingQualifications,
     formatTime,
     getTimeUntilShift,
-    checkBreakRule,
     // Raw data
     facilities,
   };

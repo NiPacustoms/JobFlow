@@ -262,20 +262,3 @@ describe('getNearby und Entfernungsberechnung', () => {
   });
 });
 
-describe('exportFacilities', () => {
-  it('liefert den Export-Pfad je Format', async () => {
-    vi.useFakeTimers();
-    const service = await lade();
-    const versprechen = service.exportFacilities({ userId: 'u1', companyId: 'firmaA' }, 'csv');
-    await vi.advanceTimersByTimeAsync(1000);
-    await expect(versprechen).resolves.toBe('/facilities-export.csv');
-    vi.useRealTimers();
-  });
-
-  it('verlangt einen gültigen Kontext', async () => {
-    const service = await lade();
-    await expect(
-      service.exportFacilities({ userId: '', companyId: 'firmaA' }, 'csv')
-    ).rejects.toThrow(/userId/);
-  });
-});

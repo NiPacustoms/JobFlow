@@ -3,9 +3,14 @@
 **Stand:** 27.07.2026 · Ziel: Die AufAbruf GmbH kann die App im Tagesbetrieb
 einsetzen, ohne auf ein Bedienelement zu treffen, das nichts oder Falsches tut.
 
-> **Fortschritt 27.07.2026:** Phase 0 ist umgesetzt (alle drei Blocker
-> behoben). Offen: Phase 1 (Zulieferungen), Phase 2 (Abnahme), Phase 3,
-> Phase 4.
+> **Fortschritt 27.07.2026:** Phase 0 und Phase 3 sind umgesetzt. Bei der
+> Umsetzung von Phase 3 kamen zwei weitere sichtbare Täuschungen zutage und
+> wurden mit entfernt: Die Einstellungsseite zeigte erfundene Systemwerte
+> („99,9 % Uptime", „2,5 GB Speicher") und der Schicht-Annahme-Dialog
+> behauptete bei jeder Annahme „✓ Pausenregel eingehalten: Mindestens 11
+> Stunden zwischen den Schichten", obwohl nie geprüft wurde (die echte
+> Ruhezeit-/ArbZG-Prüfung sitzt serverseitig). Offen: Phase 1
+> (Zulieferungen), Phase 2 (Abnahme), Phase 4 (Entscheidungen).
 
 Grundlage sind verifizierte Befunde (Code gelesen, Pfade nachgeprüft) – nicht
 der Stand der älteren Doku. Wo `KNOWN_LIMITATIONS.md` etwas als erledigt
@@ -130,7 +135,7 @@ aufgenommen und behoben, bevor echte Mitarbeitende auf das System gehen.
 
 ---
 
-## Phase 3 – Toten Code entfernen (kein Nutzerimpact, aber Wartungslast)
+## Phase 3 – ✅ ERLEDIGT (27.07.) · Toten Code entfernen
 
 Diese Platzhalter sind aus der Oberfläche **nicht** erreichbar (in `app/`
 nachgeprüft: keine Treffer). Sie sind kein Blocker, aber sie täuschen jeden,
@@ -138,13 +143,13 @@ der später am Code arbeitet:
 
 | Stelle | Befund | Vorschlag |
 |--------|--------|-----------|
-| `lib/hooks/useStaffGroups.ts` | Enthält eigene Stubs, die Fehler werfen – obwohl `lib/services/staffGroups.ts` real existiert und vollständig getestet ist | Hook auf den echten Service umstellen (dann ist das Feature nutzbar, falls eine Gruppen-Oberfläche gewünscht ist) oder Hook löschen |
-| `adminSettingsService.getSystemInfo()` | Liefert hartkodiert „99.9 % Uptime", „512 MB", „15 % CPU" | Entfernen oder an echte Messwerte hängen |
-| `useNurseSchedule.checkConflicts/checkBreakRule` | Geben immer `[]` bzw. `true` zurück – die 11-Stunden-Ruhezeit wird hier nicht geprüft (die echte Prüfung sitzt serverseitig in der ArbZG-Validierung) | Entfernen, damit niemand sie für eine echte Prüfung hält |
-| `useSchedule.checkConflicts/getAssignmentsForDateRange` | Kommentiert als „would need to be enhanced" | Entfernen oder implementieren |
-| `useAdminDashboard.getTopPerformers/getTopFacilities` | Leere Listen | Entfernen |
-| `employeeReports.generateReportData` | Liefert Nullstrukturen | Entfernen (Berichte laufen über `useEmployeeReports`) |
-| `employeeFacilities.exportFacilities`, `employeeReports.exportReport/bulkExport` | Liefern nur Pfade auf nicht existierende Dateien | Entfernen oder wie P0-1 auf echte Erzeugung umstellen |
+| `lib/hooks/useStaffGroups.ts` | ✅ Gelöscht (kein UI-Verbraucher; der getestete `staffGroupService` bleibt als Baustein für eine spätere Gruppen-Oberfläche) |  |
+| `adminSettingsService.getSystemInfo()` | ✅ Entfernt – war entgegen der ersten Analyse doch sichtbar (Kacheln oben auf der Einstellungsseite zeigten die erfundenen Werte) |  |
+| `useNurseSchedule.checkConflicts/checkBreakRule` | ✅ Entfernt – inklusive der Anzeige-Kette: `AcceptShiftDialog` zeigte bei jeder Annahme fälschlich „Pausenregel eingehalten" an |  |
+| `useSchedule.checkConflicts/getAssignmentsForDateRange` | ✅ Der gesamte Hook war unbenutzt (Dienstplan läuft über `useNurseSchedule`) und wurde gelöscht |  |
+| `useAdminDashboard.getTopPerformers/getTopFacilities` | ✅ Entfernt |  |
+| `employeeReports.generateReportData` | ✅ Der gesamte `employeeReportsService` war unbenutzt (Berichte laufen über `useEmployeeReports` + `reportService`) und wurde gelöscht |  |
+| `employeeFacilities.exportFacilities`, `employeeReports.exportReport/bulkExport` | ✅ Entfernt (mit dem employeeReportsService bzw. einzeln) |  |
 
 **Aufwand:** ~1 Tag.
 

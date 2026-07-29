@@ -184,11 +184,6 @@ describe('Aktionen', () => {
     );
   });
 
-  it('liefert (noch) keine Konflikte zurück', async () => {
-    const { result } = renderHook(() => useNurseSchedule(), { wrapper });
-    await expect(result.current.checkConflicts('s1')).resolves.toEqual([]);
-    expect(result.current.checkBreakRule(einsatz() as never)).toBe(true);
-  });
 });
 
 describe('Hilfsfunktionen', () => {

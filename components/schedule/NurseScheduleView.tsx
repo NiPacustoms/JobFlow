@@ -66,7 +66,6 @@ export function NurseScheduleView() {
     getStatusLabel,
     formatTime,
     getTimeUntilShift,
-    checkBreakRule,
   } = useNurseSchedule(viewMode === 'calendar' ? 'month' : calendarPeriod, currentDate);
 
   const handleAcceptAssignment = async (assignmentId: string) => {
@@ -388,7 +387,6 @@ export function NurseScheduleView() {
                         const dateObj = typeof shift.date === 'string' ? new Date(shift.date) : shift.date;
                         return getTimeUntilShift({ ...(shift as any), date: dateObj } as any);
                       }}
-                      checkBreakRule={checkBreakRule}
                     />
                   </Grid>
                 ))}
@@ -417,7 +415,6 @@ export function NurseScheduleView() {
                         const dateObj = typeof shift.date === 'string' ? new Date(shift.date) : shift.date;
                         return getTimeUntilShift({ ...(shift as any), date: dateObj } as any);
                       }}
-                      checkBreakRule={checkBreakRule}
                     />
                   </Grid>
                 ))}
@@ -448,7 +445,6 @@ export function NurseScheduleView() {
           assignment={selectedAssignment as any}
           onAccept={() => handleAcceptAssignment(selectedAssignment.id)}
           getShiftTypeColor={getShiftTypeColor as (type?: string) => string}
-          checkBreakRule={checkBreakRule}
         />
       )}
     </Box>

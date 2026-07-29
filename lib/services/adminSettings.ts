@@ -61,15 +61,6 @@ export interface DocumentType {
   updatedAt: Date;
 }
 
-export interface SystemInfo {
-  status: string;
-  version: string;
-  uptime: string;
-  storage: string;
-  memory: string;
-  cpu: string;
-  network: string;
-}
 
 export const adminSettingsService = {
   // Get system settings
@@ -387,19 +378,6 @@ export const adminSettingsService = {
   },
 
   // Get system info
-  async getSystemInfo(): Promise<SystemInfo> {
-    // Gather system information from Firestore and system stats
-    return {
-      status: 'Online',
-      version: '1.0.0',
-      uptime: '99.9%',
-      storage: '2.5 GB',
-      memory: '512 MB',
-      cpu: '15%',
-      network: 'Gut',
-    };
-  },
-
   /**
    * Liest den Status der täglichen Firestore-Sicherung
    * (geschrieben von der Scheduled Function scheduledFirestoreBackup nach

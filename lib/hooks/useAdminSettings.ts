@@ -49,15 +49,6 @@ export interface DocumentType {
   updatedAt: Date;
 }
 
-export interface SystemInfo {
-  status: string;
-  version: string;
-  uptime: string;
-  storage: string;
-  memory: string;
-  cpu: string;
-  network: string;
-}
 
 export function useAdminSettings() {
   const queryClient = useQueryClient();
@@ -97,18 +88,6 @@ export function useAdminSettings() {
   } = useQuery({
     queryKey: ['adminDocumentTypes'],
     queryFn: () => adminSettingsService.getDocumentTypes(),
-    enabled: isAdmin, // Only fetch if user is admin
-    retry: false, // Don't retry on permission errors
-  });
-
-  // Get system info
-  const {
-    data: systemInfo,
-    isLoading: systemInfoLoading,
-    error: systemInfoError,
-  } = useQuery({
-    queryKey: ['adminSystemInfo'],
-    queryFn: () => adminSettingsService.getSystemInfo(),
     enabled: isAdmin, // Only fetch if user is admin
     retry: false, // Don't retry on permission errors
   });
@@ -255,17 +234,8 @@ export function useAdminSettings() {
     },
     roles,
     documentTypes,
-    systemInfo: systemInfo || {
-      status: 'Online',
-      version: '1.0.0',
-      uptime: '99.9%',
-      storage: '2.5 GB',
-      memory: '512 MB',
-      cpu: '15%',
-      network: 'Gut',
-    },
-    isLoading: settingsLoading || rolesLoading || documentTypesLoading || systemInfoLoading,
-    error: settingsError || rolesError || documentTypesError || systemInfoError,
+    isLoading: settingsLoading || rolesLoading || documentTypesLoading,
+    error: settingsError || rolesError || documentTypesError,
     updateSettings,
     createRole,
     updateRole,
