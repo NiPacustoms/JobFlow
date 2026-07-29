@@ -197,38 +197,13 @@ export function useAdminSettings() {
     },
   });
 
-  // Backup data mutation
-  const backupDataMutation = useMutation({
-    mutationFn: () => adminSettingsService.backupData(),
-    onSuccess: (backupUrl) => {
-      if (backupUrl) {
-        const a = document.createElement('a');
-        a.href = backupUrl;
-        a.download = `backup-${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
-      queryClient.invalidateQueries({ queryKey: ['adminSettings'] });
-      toast.success('Backup erfolgreich erstellt');
-    },
-    onError: (error) => {
-      toast.error('Fehler beim Erstellen des Backups: ' + error.message);
-    },
-  });
-
-  // Restore data mutation
-  const restoreDataMutation = useMutation({
-    mutationFn: (file: File) => adminSettingsService.restoreData(file),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['adminSettings'] });
-      queryClient.invalidateQueries({ queryKey: ['adminRoles'] });
-      queryClient.invalidateQueries({ queryKey: ['adminDocumentTypes'] });
-      toast.success('Daten erfolgreich wiederhergestellt');
-    },
-    onError: (error) => {
-      toast.error('Fehler beim Wiederherstellen der Daten: ' + error.message);
-    },
+  // Status der täglichen serverseitigen Firestore-Sicherung
+  const { data: backupStatus = null, isLoading: isLoadingBackupStatus } = useQuery({
+    queryKey: ['adminBackupStatus'],
+    queryFn: () => adminSettingsService.getBackupStatus(),
+    enabled: isAdmin,
+    retry: false,
+    staleTime: 60 * 1000,
   });
 
   // Helper functions
@@ -258,14 +233,6 @@ export function useAdminSettings() {
 
   const deleteDocumentType = async (id: string) => {
     return deleteDocumentTypeMutation.mutateAsync(id);
-  };
-
-  const backupData = async () => {
-    return backupDataMutation.mutateAsync();
-  };
-
-  const restoreData = async (file: File) => {
-    return restoreDataMutation.mutateAsync(file);
   };
 
   return {
@@ -306,12 +273,10 @@ export function useAdminSettings() {
     createDocumentType,
     updateDocumentType,
     deleteDocumentType,
-    backupData,
-    restoreData,
+    backupStatus,
+    isLoadingBackupStatus,
     isUpdating: updateSettingsMutation.isPending,
     isCreating: createRoleMutation.isPending || createDocumentTypeMutation.isPending,
     isDeleting: deleteRoleMutation.isPending || deleteDocumentTypeMutation.isPending,
-    isBackingUp: backupDataMutation.isPending,
-    isRestoring: restoreDataMutation.isPending,
   };
 }

@@ -53,7 +53,7 @@ function buildCompanyFooterInfo(): CompanyFooterInfo {
   };
 }
 
-export type DocumentType = 
+export type DocumentType =
   | 'timesheet-report'      // Zeiterfassungsbericht
   | 'assignment-confirmation' // Einsatzbestätigung
   | 'shift-summary'         // Schichtzusammenfassung
@@ -61,7 +61,19 @@ export type DocumentType =
   | 'custom-report'          // Benutzerdefinierter Bericht
   | 'assignment-notification' // Einsatzmitteilung nach § 11 Absatz 2 Satz 4 AÜG
   | 'assignment-signatures'   // Assignment mit allen Signaturen
-  | 'admin-report';          // Admin-Bericht (High-End-PDF mit Firmenlogo)
+  | 'admin-report'           // Admin-Bericht (High-End-PDF mit Firmenlogo)
+  | 'time-entries-report';   // Stempeluhr-Einträge des Mitarbeiters (Zeiten-Seite)
+
+/** Ein Stempeluhr-Eintrag für den Zeiten-Export (aus lib/services/times.ts). */
+export interface TimeEntryExportRow {
+  date: Date;
+  type: 'work' | 'break' | 'sick';
+  startTime?: string;
+  endTime?: string;
+  hours: number;
+  status: string;
+  reason?: string;
+}
 
 export interface DocumentGenerationOptions {
   type: DocumentType;
@@ -75,6 +87,8 @@ export interface DocumentGenerationOptions {
   timesheetIds?: string[];
   includeSignatures?: boolean;
   customData?: Record<string, unknown>;
+  /** Für den Zeiten-Export: bereits geladene Stempeluhr-Einträge */
+  timeEntries?: TimeEntryExportRow[];
   /** Für Admin-Bericht-Export: Logo, Firmenname, Titel, Zeitraum */
   adminReportData?: {
     reportTitle: string;
@@ -153,6 +167,9 @@ class DocumentGenerationService {
         break;
       case 'admin-report':
         pdfBlob = await this.generateAdminReport(doc, autoTable, options);
+        break;
+      case 'time-entries-report':
+        pdfBlob = await this.generateTimeEntriesReport(doc, autoTable, options);
         break;
       default:
         throw new Error(`Unbekannter Dokumenttyp: ${options.type}`);
@@ -283,6 +300,75 @@ class DocumentGenerationService {
       y = drawStatTiles(doc, y, [
         { label: 'Gesamtstunden', value: formatHoursDE(totalHours) },
         { label: 'Genehmigte Stunden', value: formatHoursDE(approvedHours) },
+      ]);
+    }
+
+    drawFooters(doc);
+    return doc.output('blob');
+  }
+
+  /**
+   * Generiert den Zeiten-Export des Mitarbeiters (Stempeluhr-Einträge).
+   * Die Einträge werden vom Aufrufer geladen und übergeben – so bleibt die
+   * PDF-Erzeugung frei von einem Import des times-Service.
+   */
+  private async generateTimeEntriesReport(
+    doc: any,
+    autoTable: any,
+    options: DocumentGenerationOptions
+  ): Promise<Blob> {
+    const eintraege = options.timeEntries ?? [];
+    const sortiert = [...eintraege].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    let y = await drawLetterhead(doc, {
+      title: 'Meine Zeiten',
+      subtitle:
+        sortiert.length > 0
+          ? `Zeitraum: ${formatDateDE(sortiert[0].date)} – ${formatDateDE(sortiert[sortiert.length - 1].date)}`
+          : undefined,
+    });
+
+    const artLabel: Record<TimeEntryExportRow['type'], string> = {
+      work: 'Arbeit',
+      break: 'Pause',
+      sick: 'Krank',
+    };
+
+    const tableData =
+      sortiert.length > 0
+        ? sortiert.map(e => [
+            formatDateDE(e.date),
+            artLabel[e.type] ?? e.type,
+            e.startTime || '–',
+            e.endTime || '–',
+            formatHoursDE(e.hours, false),
+            this.getStatusLabel(e.status),
+            e.reason || '',
+          ])
+        : [['Keine Zeiteinträge vorhanden', '', '', '', '', '', '']];
+
+    autoTable(doc, {
+      head: [['Datum', 'Art', 'Start', 'Ende', 'Stunden', 'Status', 'Anmerkung']],
+      body: tableData,
+      startY: y,
+      ...brandedTableOptions([4]),
+    });
+
+    if (sortiert.length > 0) {
+      const arbeitsstunden = sortiert
+        .filter(e => e.type === 'work')
+        .reduce((sum, e) => sum + (e.hours || 0), 0);
+      const krankStunden = sortiert
+        .filter(e => e.type === 'sick')
+        .reduce((sum, e) => sum + (e.hours || 0), 0);
+
+      const finalY = (doc as any).lastAutoTable?.finalY || y + sortiert.length * 8 + 20;
+      y = finalY + 15;
+      y = sectionTitle(doc, y, 'Zusammenfassung');
+      y = drawStatTiles(doc, y, [
+        { label: 'Arbeitsstunden', value: formatHoursDE(arbeitsstunden) },
+        { label: 'Krankheitsstunden', value: formatHoursDE(krankStunden) },
+        { label: 'Einträge', value: String(sortiert.length) },
       ]);
     }
 
@@ -1204,6 +1290,7 @@ class DocumentGenerationService {
       'assignment-notification': 'Einsatzmitteilung',
       'assignment-signatures': 'Zeiterfassung_Unterschriften',
       'admin-report': 'Bericht',
+      'time-entries-report': 'Meine_Zeiten',
     };
     
     const typeName = typeMap[options.type] || 'Dokument';

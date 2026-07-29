@@ -400,50 +400,43 @@ export const adminSettingsService = {
     };
   },
 
-  // Backup data
-  async backupData(): Promise<string> {
-    try {
-      // Create backup of Firestore data
-      const backupData = {
-        timestamp: new Date().toISOString(),
-        version: '1.0.0',
-        collections: ['users', 'shifts', 'facilities', 'documents'],
-        size: '2.5 MB',
-      };
-
-      // Simulate backup creation delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Create a blob URL for download
-      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-
-      return url;
-    } catch (error) {
-      throw error;
+  /**
+   * Liest den Status der täglichen Firestore-Sicherung
+   * (geschrieben von der Scheduled Function scheduledFirestoreBackup nach
+   * systemSettings/backupStatus). Die frühere clientseitige "Backup"-Funktion
+   * erzeugte nur eine Metadatendatei und wurde deshalb entfernt – die echte
+   * Sicherung läuft serverseitig als Firestore-Export in den Backup-Bucket.
+   */
+  async getBackupStatus(): Promise<{
+    lastRunAt?: Date;
+    lastSuccessAt?: Date;
+    lastResult?: 'success' | 'error';
+    lastError?: string;
+    outputUriPrefix?: string;
+    bucket?: string;
+  } | null> {
+    if (!db) {
+      return null;
     }
-  },
-
-  // Restore data
-  async restoreData(file: File): Promise<void> {
     try {
-      // Restore Firestore data from backup
-      // For now, we'll simulate the restore process
-      const text = await file.text();
-      const backupData = JSON.parse(text);
-
-      // Simulate restore process delay
-      await new Promise(resolve => setTimeout(resolve, 5000));
-
-      // Validate backup data
-      if (!backupData.timestamp || !backupData.version) {
-        throw new Error('Ungültige Backup-Datei');
+      // Bewusst systemSettings (nicht SETTINGS_COLLECTION): Die Scheduled
+      // Function schreibt den Status nach systemSettings/backupStatus.
+      const statusDoc = await getDoc(doc(db, 'systemSettings', 'backupStatus'));
+      if (!statusDoc.exists()) {
+        return null;
       }
-
-      // In a real app, you would restore the data to Firestore here
-      logger.info('Restoring data', {}, { backupData });
+      const data = statusDoc.data();
+      return {
+        lastRunAt: data.lastRunAt?.toDate(),
+        lastSuccessAt: data.lastSuccessAt?.toDate(),
+        lastResult: data.lastResult,
+        lastError: data.lastError,
+        outputUriPrefix: data.outputUriPrefix,
+        bucket: data.bucket,
+      };
     } catch (error) {
-      throw error;
+      logger.error('Fehler beim Lesen des Sicherungsstatus', error instanceof Error ? error : new Error(String(error)));
+      return null;
     }
   },
 

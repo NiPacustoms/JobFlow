@@ -135,6 +135,7 @@ export function DocumentGenerator({ open, onClose, onDocumentGenerated }: Docume
     'assignment-notification': 'Einsatzmitteilung',
     'assignment-signatures': 'Einsatz mit Signaturen',
     'admin-report': 'Bericht',
+    'time-entries-report': 'Meine Zeiten (Stempeluhr)',
   };
 
   const documentTypeDescriptions: Record<DocumentType, string> = {
@@ -147,6 +148,7 @@ export function DocumentGenerator({ open, onClose, onDocumentGenerated }: Docume
     'assignment-notification': 'Einsatzmitteilung nach § 11 Absatz 2 Satz 4 AÜG',
     'assignment-signatures': 'Generiert ein Dokument mit allen Signaturen eines Einsatzes',
     'admin-report': 'Admin-Bericht (High-End-PDF mit Firmenlogo)',
+    'time-entries-report': 'Export der Stempeluhr-Einträge (wird über „Meine Zeiten“ erzeugt)',
   };
 
   const requiresDateRange = ['timesheet-report', 'shift-summary', 'monthly-report'].includes(
@@ -186,7 +188,11 @@ export function DocumentGenerator({ open, onClose, onDocumentGenerated }: Docume
               label="Dokumenttyp"
               onChange={e => setDocumentType(e.target.value as DocumentType)}
             >
-              {Object.entries(documentTypeLabels).map(([value, label]) => (
+              {Object.entries(documentTypeLabels)
+                // Der Zeiten-Export braucht die geladenen Stempeluhr-Einträge
+                // und läuft ausschließlich über die Seite „Meine Zeiten".
+                .filter(([value]) => value !== 'time-entries-report')
+                .map(([value, label]) => (
                 <MenuItem key={value} value={value}>
                   {label}
                 </MenuItem>

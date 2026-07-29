@@ -204,53 +204,57 @@ describe('Systeminformationen und Export', () => {
   });
 });
 
-describe('Sicherung und Wiederherstellung', () => {
-  beforeEach(() => {
-    Object.defineProperty(URL, 'createObjectURL', {
-      value: vi.fn(() => 'blob:backup'),
-      configurable: true,
+describe('Sicherungsstatus', () => {
+  it('liest den von der Scheduled Function geschriebenen Status', async () => {
+    harness.setDoc({
+      id: 'backupStatus',
+      data: {
+        lastRunAt: ts(new Date(2026, 6, 27, 3, 0)),
+        lastSuccessAt: ts(new Date(2026, 6, 27, 3, 0)),
+        lastResult: 'success',
+        outputUriPrefix: 'gs://schichtklar-backups/firestore/schichtklar/2026-07-27',
+        bucket: 'gs://schichtklar-backups',
+      },
     });
+    const service = await lade();
+
+    const status = await service.getBackupStatus();
+    expect(status).toMatchObject({
+      lastResult: 'success',
+      outputUriPrefix: 'gs://schichtklar-backups/firestore/schichtklar/2026-07-27',
+    });
+    expect(status?.lastSuccessAt).toEqual(new Date(2026, 6, 27, 3, 0));
   });
 
-  it('erzeugt eine Sicherungsdatei als Download-Link', async () => {
-    vi.useFakeTimers();
+  it('liefert null, wenn noch kein Lauf protokolliert wurde', async () => {
+    harness.setDoc(null);
     const service = await lade();
-    const versprechen = service.backupData();
-    await vi.advanceTimersByTimeAsync(2000);
-    await expect(versprechen).resolves.toBe('blob:backup');
-    vi.useRealTimers();
+    await expect(service.getBackupStatus()).resolves.toBeNull();
   });
 
-  it('stellt eine gültige Sicherung wieder her', async () => {
-    vi.useFakeTimers();
+  it('meldet einen Fehlerlauf mit der Fehlermeldung', async () => {
+    harness.setDoc({
+      id: 'backupStatus',
+      data: {
+        lastRunAt: ts(new Date(2026, 6, 27, 3, 0)),
+        lastResult: 'error',
+        lastError: 'PERMISSION_DENIED: Import Export Admin fehlt',
+        bucket: 'gs://schichtklar-backups',
+      },
+    });
     const service = await lade();
-    const datei = {
-      text: async () => JSON.stringify({ timestamp: '2026-07-20T10:00:00Z', version: '1.0.0' }),
-    } as File;
 
-    const versprechen = service.restoreData(datei);
-    await vi.advanceTimersByTimeAsync(5000);
-    await expect(versprechen).resolves.toBeUndefined();
-    vi.useRealTimers();
+    const status = await service.getBackupStatus();
+    expect(status?.lastResult).toBe('error');
+    expect(status?.lastError).toContain('PERMISSION_DENIED');
+    expect(status?.lastSuccessAt).toBeUndefined();
   });
 
-  it('lehnt eine Sicherung ohne Zeitstempel oder Version ab', async () => {
-    vi.useFakeTimers();
+  it('liefert null statt zu werfen, wenn der Zugriff scheitert', async () => {
+    const firestore = await import('firebase/firestore');
+    vi.mocked(firestore.getDoc).mockRejectedValueOnce(new Error('kein Zugriff'));
     const service = await lade();
-    const datei = { text: async () => JSON.stringify({ irgendwas: true }) } as File;
-
-    const versprechen = service.restoreData(datei).catch(e => e);
-    await vi.advanceTimersByTimeAsync(5000);
-    const fehler = await versprechen;
-    expect(fehler).toBeInstanceOf(Error);
-    expect((fehler as Error).message).toContain('Ungültige Backup-Datei');
-    vi.useRealTimers();
-  });
-
-  it('meldet eine unlesbare Sicherungsdatei', async () => {
-    const service = await lade();
-    const datei = { text: async () => 'kein JSON' } as File;
-    await expect(service.restoreData(datei)).rejects.toThrow();
+    await expect(service.getBackupStatus()).resolves.toBeNull();
   });
 });
 

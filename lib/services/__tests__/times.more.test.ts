@@ -279,11 +279,73 @@ describe('reportSick', () => {
 });
 
 describe('exportTimes', () => {
-  it('liefert den Export-Pfad für das gewählte Format', async () => {
+  const arbeitseintrag = {
+    id: 'z1',
+    data: {
+      userId: 'u1',
+      date: ts(new Date(2026, 6, 20)),
+      type: 'work',
+      startTime: '06:00',
+      endTime: '14:00',
+      hours: 7.5,
+      balance: 0,
+      status: 'completed',
+    },
+  };
+
+  it('erzeugt für PDF ein gebrandetes Dokument mit den Einträgen', async () => {
+    vi.useRealTimers();
+    getDocsAntworten = [snapshot([arbeitseintrag])];
+    const generateDocument = vi.fn(async () => ({
+      url: 'https://storage.example/zeiten.pdf',
+      fileName: 'Meine_Zeiten.pdf',
+      fileSize: 1234,
+      createdAt: new Date(),
+    }));
+    vi.doMock('../documentGeneration', () => ({
+      documentGenerationService: { generateDocument },
+    }));
+
     const service = await ladeService();
-    const versprechen = service.exportTimes('csv');
-    await vi.advanceTimersByTimeAsync(1000);
-    await expect(versprechen).resolves.toBe('/times-export.csv');
+    await expect(service.exportTimes('pdf', 'u1')).resolves.toEqual({
+      art: 'url',
+      wert: 'https://storage.example/zeiten.pdf',
+    });
+    expect(generateDocument).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'time-entries-report',
+        userId: 'u1',
+        timeEntries: [expect.objectContaining({ type: 'work', hours: 7.5 })],
+      })
+    );
+    vi.doUnmock('../documentGeneration');
+  });
+
+  it('erzeugt für CSV eine lokale Datei über den ExportService', async () => {
+    vi.useRealTimers();
+    getDocsAntworten = [snapshot([arbeitseintrag])];
+    const exportToCSV = vi.fn(async (_zeilen: unknown, o: { filename: string }) => o.filename);
+    vi.doMock('../exportService', () => ({
+      ExportService: { exportToCSV, exportToExcel: vi.fn() },
+    }));
+
+    const service = await ladeService();
+    const ergebnis = await service.exportTimes('csv', 'u1');
+    expect(ergebnis.art).toBe('datei');
+    expect(ergebnis.wert).toMatch(/^meine-zeiten-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(exportToCSV).toHaveBeenCalledWith(
+      [expect.objectContaining({ Art: 'Arbeit', Stunden: 7.5 })],
+      expect.anything()
+    );
+    vi.doUnmock('../exportService');
+  });
+
+  it('verweigert den Export ohne Benutzer-ID oder ohne Einträge', async () => {
+    const service = await ladeService();
+    await expect(service.exportTimes('csv')).rejects.toThrow('Benutzer-ID');
+
+    getDocsAntworten = [snapshot([])];
+    await expect(service.exportTimes('csv', 'u1')).rejects.toThrow('Keine Zeiteinträge');
   });
 });
 

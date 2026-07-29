@@ -1,3 +1,4 @@
+import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions/v1';
 import { v1 as firestoreAdmin } from '@google-cloud/firestore';
 
@@ -27,6 +28,37 @@ function resolveProjectId(): string {
   throw new Error('Projekt-ID nicht ermittelbar (GCLOUD_PROJECT/FIREBASE_CONFIG fehlen).');
 }
 
+/**
+ * Schreibt den Sicherungsstatus nach systemSettings/backupStatus, damit der
+ * Admin-Bereich den echten Stand anzeigen kann (statt – wie früher – eine
+ * clientseitige Schein-Sicherung anzubieten).
+ */
+async function writeBackupStatus(status: {
+  lastResult: 'success' | 'error';
+  outputUriPrefix?: string;
+  bucket?: string;
+  lastError?: string;
+}): Promise<void> {
+  try {
+    const db = admin.firestore();
+    await db.doc('systemSettings/backupStatus').set(
+      {
+        ...status,
+        lastRunAt: admin.firestore.FieldValue.serverTimestamp(),
+        ...(status.lastResult === 'success'
+          ? { lastSuccessAt: admin.firestore.FieldValue.serverTimestamp() }
+          : {}),
+      },
+      { merge: true }
+    );
+  } catch (statusError) {
+    // Der Status darf die Sicherung selbst nie zum Scheitern bringen.
+    functions.logger.warn('Sicherungsstatus konnte nicht geschrieben werden', {
+      error: statusError instanceof Error ? statusError.message : String(statusError),
+    });
+  }
+}
+
 export async function runFirestoreBackup(): Promise<string> {
   const projectId = resolveProjectId();
   const bucket = process.env.BACKUP_BUCKET || `gs://${projectId}-backups`;
@@ -36,12 +68,22 @@ export async function runFirestoreBackup(): Promise<string> {
   const databaseName = client.databasePath(projectId, '(default)');
 
   functions.logger.info('Starte Firestore-Export', { outputUriPrefix });
-  const [operation] = await client.exportDocuments({
-    name: databaseName,
-    outputUriPrefix,
-    // Leer = alle Collections exportieren
-    collectionIds: [],
-  });
-  functions.logger.info('Firestore-Export gestartet', { operation: operation.name, outputUriPrefix });
-  return outputUriPrefix;
+  try {
+    const [operation] = await client.exportDocuments({
+      name: databaseName,
+      outputUriPrefix,
+      // Leer = alle Collections exportieren
+      collectionIds: [],
+    });
+    functions.logger.info('Firestore-Export gestartet', { operation: operation.name, outputUriPrefix });
+    await writeBackupStatus({ lastResult: 'success', outputUriPrefix, bucket });
+    return outputUriPrefix;
+  } catch (error) {
+    await writeBackupStatus({
+      lastResult: 'error',
+      bucket,
+      lastError: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
