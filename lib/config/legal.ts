@@ -94,6 +94,7 @@ export const LEGAL_URLS = {
   impressum: process.env.NEXT_PUBLIC_IMPRESSUM_URL || '/recht/impressum',
   datenschutz: process.env.NEXT_PUBLIC_DATENSCHUTZ_URL || '/recht/datenschutz',
   agb: process.env.NEXT_PUBLIC_AGB_URL || '/recht/agb',
+  avv: process.env.NEXT_PUBLIC_AVV_URL || '/recht/avv',
 } as const;
 
 /**

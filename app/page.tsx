@@ -526,7 +526,7 @@ export default function HomePage() {
             <Button key="agb" component={Link} href={LEGAL_URLS.agb} color="inherit" size="small">
               AGB
             </Button>
-            <Button key="avv" component={Link} href="/recht/avv" color="inherit" size="small">
+            <Button key="avv" component={Link} href={LEGAL_URLS.avv} color="inherit" size="small">
               AVV
             </Button>
           </Stack>
