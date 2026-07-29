@@ -3,6 +3,10 @@
 **Stand:** 27.07.2026 · Ziel: Die AufAbruf GmbH kann die App im Tagesbetrieb
 einsetzen, ohne auf ein Bedienelement zu treffen, das nichts oder Falsches tut.
 
+> **Fortschritt 27.07.2026:** Phase 0 ist umgesetzt (alle drei Blocker
+> behoben). Offen: Phase 1 (Zulieferungen), Phase 2 (Abnahme), Phase 3,
+> Phase 4.
+
 Grundlage sind verifizierte Befunde (Code gelesen, Pfade nachgeprüft) – nicht
 der Stand der älteren Doku. Wo `KNOWN_LIMITATIONS.md` etwas als erledigt
 führt, das nachweislich nicht funktioniert, ist das hier vermerkt.
@@ -15,7 +19,7 @@ Drei Bedienelemente sind für den Nutzer erreichbar und täuschen ihn. Das sind
 die einzigen verifizierten Fälle dieser Art; alle übrigen Platzhalter im Code
 sind aus der Oberfläche **nicht** erreichbar (siehe Phase 3).
 
-### P0-1 · Mitarbeiter → Zeiten → „Export PDF" lädt eine leere Datei
+### P0-1 · ✅ ERLEDIGT (27.07.) · Mitarbeiter → Zeiten → „Export PDF" lädt eine leere Datei
 
 **Befund:** `timesService.exportTimes()` (`lib/services/times.ts:684`) gibt den
 Pfad `/times-export.pdf` zurück. Diese Datei existiert nicht (`public/` geprüft).
@@ -31,7 +35,7 @@ Mitarbeiter lädt eine 404-Antwort herunter und glaubt, seinen Nachweis zu haben
 
 **Aufwand:** ~0,5 Tag inkl. Tests. Beide Zielbausteine sind bereits abgedeckt.
 
-### P0-2 · Mitarbeiter → Berichte → Export schlägt immer fehl
+### P0-2 · ✅ ERLEDIGT (27.07.) · Mitarbeiter → Berichte → Export schlägt immer fehl
 
 **Befund:** `useEmployeeReports.exportWorkTimeReport()`
 (`lib/hooks/useEmployeeReports.ts:222-232`) ruft
@@ -47,7 +51,7 @@ verwenden – dieselbe Erzeugung wie beim Stundennachweis, ohne Bericht-Dokument
 
 **Aufwand:** ~0,5 Tag inkl. Tests.
 
-### P0-3 · Admin → Einstellungen → „Backup erstellen" erzeugt kein Backup
+### P0-3 · ✅ ERLEDIGT (27.07.) · Admin → Einstellungen → „Backup erstellen" erzeugt kein Backup
 
 **Befund:** `adminSettingsService.backupData()`
 (`lib/services/adminSettings.ts:404`) liefert eine JSON-Datei mit vier
