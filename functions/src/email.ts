@@ -93,40 +93,6 @@ function renderInviteEmailHtml(payload: InviteEmailPayload): string {
   `;
 }
 
-/**
- * Versand per Resend (https://resend.com) – nur API-Key nötig, kein SMTP.
- * Env: RESEND_API_KEY (Pflicht), optional RESEND_FROM (z. B. "Schichtklar <noreply@ihredomain.de>").
- */
-async function sendInvitationViaResend(
-  payload: InviteEmailPayload,
-  html: string,
-  text: string
-): Promise<{ success: boolean; fallback?: boolean }> {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  if (!apiKey) return { success: false, fallback: true };
-
-  const from = process.env.RESEND_FROM?.trim() || 'Schichtklar <onboarding@resend.dev>';
-  try {
-    const { Resend } = await import('resend');
-    const resend = new Resend(apiKey);
-    const { error } = await resend.emails.send({
-      from,
-      to: payload.to,
-      subject: 'Einladung zu Schichtklar',
-      html,
-      text,
-    });
-    if (error) {
-      console.error('[Email:Resend]', error);
-      return { success: false, fallback: true };
-    }
-    return { success: true };
-  } catch (e) {
-    console.error('[Email:Resend]', e);
-    return { success: false, fallback: true };
-  }
-}
-
 /** Sendet die Einladungs-E-Mail (ohne Auth – für HTTP-Aufruf aus der API). */
 export async function sendInvitationEmailInternal(
   data: InviteEmailPayload
@@ -141,11 +107,6 @@ export async function sendInvitationEmailInternal(
     `Sie wurden von ${company} eingeladen, Schichtklar zu nutzen.`,
     `Bitte öffnen Sie innerhalb von 24 Stunden folgenden Link: ${acceptLink}`,
   ].join('\n\n');
-
-  if (process.env.RESEND_API_KEY?.trim()) {
-    const res = await sendInvitationViaResend({ to, companyName: company, acceptLink }, html, text);
-    if (res.success) return res;
-  }
 
   const result = await sendTemplatedEmail({
     to,

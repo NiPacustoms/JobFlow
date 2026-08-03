@@ -38,8 +38,7 @@ Referenz aller von der Anwendung genutzten Umgebungsvariablen. `NEXT_PUBLIC_*`-V
 | Variable | Zweck |
 |---|---|
 | `FIREBASE_ADMIN_CREDENTIALS` **oder** `FIREBASE_ADMIN_CREDENTIALS_BASE64` | Service-Account-JSON (Admin-SDK). Base64 empfohlen. |
-| `RESEND_API_KEY`, `RESEND_FROM` | E-Mail-Versand (Resend) |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`, `SMTP_FROM` | SMTP-Alternative zum E-Mail-Versand |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`, `SMTP_FROM` | E-Mail-Versand per SMTP (in `functions/.env`) |
 | `INVITATION_EMAIL_SECRET`, `FIREBASE_INVITATION_EMAIL_URL` | Einladungs-E-Mail-Function (Signatur/Endpoint) |
 | `ENABLE_ADMIN_BOOTSTRAP`, `ADMIN_BOOTSTRAP_EMAIL` | Admin-Bootstrap (Erst-Einrichtung; in Prod standardmäßig aus) |
 | `ORS_API_KEY` | OpenRouteService (serverseitig) |

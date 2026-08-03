@@ -1,5 +1,5 @@
-// Minimaler E-Mail Versand-Adapter (Platzhalter)
-// In Produktion: Resend/SES/Sendgrid integrieren.
+// Minimaler E-Mail Versand-Adapter: ruft die Cloud Functions auf,
+// die per SMTP (functions/.env) versenden; sonst nur Logging.
 
 export interface InviteEmailPayload {
   to: string;
@@ -79,7 +79,7 @@ export function renderAssignmentFormEmailHtml(payload: AssignmentFormEmailPayloa
 }
 
 export async function sendAssignmentFormEmail(payload: AssignmentFormEmailPayload): Promise<void> {
-  // Nur Logging, kein Versand. Optional V2: SendGrid/Resend o. Ä. integrieren.
+  // Nur Logging, kein Versand.
   logger.info('[Email] Assignment Form', {}, { payload, html: renderAssignmentFormEmailHtml(payload) });
 }
 

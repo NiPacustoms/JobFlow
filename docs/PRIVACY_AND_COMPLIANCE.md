@@ -28,7 +28,7 @@ Mitarbeiter-Stammdaten (Name, Kontakt, Adresse, Bankverbindung, Qualifikationen,
 - ⚖️ **Datenschutzerklärung & Impressum** mit echten Anbieterdaten füllen (aktuell neutrale Platzhalter; Build-Guard erzwingt Ersetzung). Seiten vorhanden: `/recht/datenschutz`, `/recht/impressum`.
 - ⚖️ **Einwilligungen**: Cookie-Banner (`components/legal/CookieBanner`) und ggf. Google Tag Manager (in CSP erlaubt) auf tatsächliche Nutzung/Erforderlichkeit prüfen; nicht-essentielle Tags nur nach Einwilligung laden.
 - ⚖️ **Signaturen der verantwortlichen Person vor Ort** (ohne eigenes Konto): Rechtsgrundlage und Informationspflicht gegenüber dieser Person klären.
-- ⚖️ **AV-Verträge mit Unterauftragnehmern** (Resend/SMTP-Anbieter, Sentry, OpenRouteService) abschließen; Datenflüsse in EU/USA prüfen.
+- ⚖️ **AV-Verträge mit Unterauftragnehmern** (SMTP-Anbieter, Sentry, OpenRouteService) abschließen; Datenflüsse in EU/USA prüfen.
 - ⚖️ **TOMs** (Art. 32) formal dokumentieren.
 
 ## 4. Vor Verkauf zu anonymisieren/entfernen (Status)
