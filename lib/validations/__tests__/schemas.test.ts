@@ -11,7 +11,6 @@ import {
 import { registerAdminSchema, acceptInviteSchema } from '../auth';
 import { createInvitationSchema, invitationsQuerySchema } from '../invitations';
 import { createReminderSchema } from '../forms';
-import { staffGroupDataSchema } from '../staffGroup';
 import { staffCreateSchema } from '../staff';
 
 const fehlermeldungen = (result: { success: boolean; error?: { issues: { message: string }[] } }) =>
@@ -210,30 +209,6 @@ describe('createReminderSchema', () => {
   it('verlangt employeeId und formType', () => {
     const result = createReminderSchema.safeParse({ employeeId: '', formType: '', dueDate: new Date() });
     expect(fehlermeldungen(result)).toContain('employeeId ist erforderlich');
-  });
-});
-
-describe('staffGroupDataSchema', () => {
-  it('akzeptiert eine vollständige Gruppe', () => {
-    expect(
-      staffGroupDataSchema.safeParse({
-        name: 'Nachtdienst',
-        color: '#0f766e',
-        members: ['u1'],
-        permissions: [],
-      }).success
-    ).toBe(true);
-  });
-
-  it('verlangt Name und Farbe', () => {
-    const result = staffGroupDataSchema.safeParse({
-      name: '   ',
-      color: '',
-      members: [],
-      permissions: [],
-    });
-    expect(fehlermeldungen(result)).toContain('Gruppenname ist erforderlich');
-    expect(fehlermeldungen(result)).toContain('Farbe ist erforderlich');
   });
 });
 

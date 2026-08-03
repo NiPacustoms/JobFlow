@@ -59,8 +59,6 @@ export { notifyFacility as notifyFacilityForAssignment } from './assignment/noti
 export { runScheduledReportsNow } from './scheduledReports';
 // Weitere vom Client genutzte, bislang nicht exportierte Callables:
 export { getAvailableEmployeeIdsForSlot } from './assignment/getAvailableEmployeeIdsForSlot';
-export { requestExportToken } from './exports/requestExportToken';
-export { validateExportToken } from './exports/validateExportToken';
 export { sendAssignmentSignatureEmailCF } from './email';
 export { findCandidates } from './findCandidates';
 export { requestShift } from './requestShift';
@@ -104,6 +102,42 @@ export const sendInvitationEmailHttp = functions.https.onRequest(async (req, res
     res.status(200).json({ success: result.success, fallback: result.fallback });
   } catch (e) {
     console.error('sendInvitationEmailHttp', e);
+    res.status(500).json({ error: 'Failed to send email' });
+  }
+});
+export const sendAssignmentFormEmailCF = functions.https.onCall(async (data, context) => {
+  const { sendAssignmentFormEmailHandler } = await import('./email');
+  return sendAssignmentFormEmailHandler(data as Parameters<typeof sendAssignmentFormEmailHandler>[0], context);
+});
+export const sendAssignmentFormEmailHttp = functions.https.onRequest(async (req, res) => {
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
+  }
+  const secret = process.env.INVITATION_EMAIL_SECRET;
+  const authHeader = req.headers.authorization;
+  const bearer = typeof authHeader === 'string' && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (!secret || bearer !== secret) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const body = req.body as { to?: string; formLink?: string; employeeName?: string; shiftInfo?: string };
+  const { to, formLink } = body || {};
+  if (!to || !formLink) {
+    res.status(400).json({ error: 'Missing to or formLink' });
+    return;
+  }
+  try {
+    const { sendAssignmentFormEmailInternal } = await import('./email');
+    const result = await sendAssignmentFormEmailInternal({
+      to,
+      formLink,
+      employeeName: body.employeeName,
+      shiftInfo: body.shiftInfo,
+    });
+    res.status(200).json({ success: result.success, fallback: result.fallback });
+  } catch (e) {
+    console.error('sendAssignmentFormEmailHttp', e);
     res.status(500).json({ error: 'Failed to send email' });
   }
 });

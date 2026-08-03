@@ -12,6 +12,17 @@ einsetzen, ohne auf ein Bedienelement zu treffen, das nichts oder Falsches tut.
 > Ruhezeit-/ArbZG-Prüfung sitzt serverseitig). Offen: Phase 1
 > (Zulieferungen), Phase 2 (Abnahme), Phase 4 (Entscheidungen).
 
+> **Fortschritt 03.08.2026 (zweite Aufräumrunde):** Eine sechste stille
+> Täuschung behoben – die Formular-E-Mail zu Einsätzen (`AssignShiftDialog`,
+> `ShiftCreateDialog`, Erinnerungs-Job `/api/forms/reminders`) wurde nur
+> protokolliert, nie versendet; jetzt läuft sie über die neuen Functions
+> `sendAssignmentFormEmailCF`/`sendAssignmentFormEmailHttp` per SMTP.
+> Außerdem: DSGVO-Datenexport-Button auf der Admin-Mitarbeiter-Detailseite
+> ergänzt (Route existierte ohne UI) und ~4.000 Zeilen tote Duplikate
+> entfernt (u. a. 11 UI-lose Hooks, 9 Services inkl. paralleler
+> Personalgruppen-Verwaltung – Gruppen laufen sichtbar über „Kategorien
+> verwalten" –, Export-Token-Functions, 4 API-Routen ohne Aufrufer).
+
 Grundlage sind verifizierte Befunde (Code gelesen, Pfade nachgeprüft) – nicht
 der Stand der älteren Doku. Wo `KNOWN_LIMITATIONS.md` etwas als erledigt
 führt, das nachweislich nicht funktioniert, ist das hier vermerkt.
@@ -93,7 +104,7 @@ die App, aber Mails, Push, Anfahrten und Rechtslinks bleiben unvollständig.
 | # | Punkt | Wer | Ohne das passiert |
 |---|-------|-----|-------------------|
 | 1 | Produktions-Domain festlegen; `NEXT_PUBLIC_APP_URL` setzen; `scripts/storage-cors.json` von `your-production-domain.example` auf die echte Origin ändern und `npm run storage:cors` ausführen | Eigentümer | Datei-Uploads/-Downloads scheitern per CORS |
-| 2 | E-Mail-Versand: SMTP-Zugang des aufabruf.eu-Postfachs in `functions/.env` hinterlegen (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM="SchichtKlar <noreply@aufabruf.eu>"`; `SMTP_SECURE=1` nur bei Port 465, bei Port 587/STARTTLS weglassen). Dafür beim Mail-Anbieter `noreply@aufabruf.eu` als Postfach oder Alias anlegen (Resend wurde restlos entfernt – aller Versand läuft über SMTP). Zusätzlich in der Web-App-Env: `FIREBASE_INVITATION_EMAIL_URL` + `INVITATION_EMAIL_SECRET`, damit serverseitige Einladungen die Function erreichen | Eigentümer | Einladungen und Stundennachweis-Mails werden nur protokolliert, nicht versandt |
+| 2 | E-Mail-Versand: SMTP-Zugang des aufabruf.eu-Postfachs in `functions/.env` hinterlegen (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM="SchichtKlar <noreply@aufabruf.eu>"`; `SMTP_SECURE=1` nur bei Port 465, bei Port 587/STARTTLS weglassen). Dafür beim Mail-Anbieter `noreply@aufabruf.eu` als Postfach oder Alias anlegen (Resend wurde restlos entfernt – aller Versand läuft über SMTP). Zusätzlich in der Web-App-Env: `FIREBASE_INVITATION_EMAIL_URL`, `FIREBASE_FORM_EMAIL_URL` + `INVITATION_EMAIL_SECRET`, damit serverseitige Einladungen und Formular-Erinnerungen die Functions erreichen | Eigentümer | Einladungen, Formular- und Stundennachweis-Mails werden nur protokolliert, nicht versandt |
 | 3 | `NEXT_PUBLIC_FIREBASE_VAPID_KEY` | Eigentümer | Keine Push-Hinweise auf neue Einsätze |
 | 4 | `ORS_API_KEY` (OpenRouteService) | Eigentümer | Anfahrtsberechnung liefert nichts |
 | 5 | `BACKUP_BUCKET` + Bucket anlegen | Eigentümer | Tägliche Sicherung läuft ins Leere (siehe P0-3) |

@@ -92,7 +92,6 @@ vi.mock('@/lib/utils/toast', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
-import { useStaff } from '../useStaff';
 import { useDocuments } from '../useDocuments';
 import { useAlerts } from '../useAlerts';
 
@@ -110,33 +109,6 @@ beforeEach(() => {
   getByStatus.mockResolvedValue([]);
   getDocuments.mockResolvedValue([]);
   getAlerts.mockResolvedValue([]);
-});
-
-describe('useStaff', () => {
-  it('lädt die Mitarbeiterliste', async () => {
-    getAllUsers.mockResolvedValue({
-      data: [{ id: 'u1', displayName: 'Anna', role: 'nurse', active: true }],
-      total: 1,
-      page: 1,
-      limit: 50,
-      hasMore: false,
-    });
-    const { result } = renderHook(() => useStaff(), { wrapper });
-    await waitFor(() => expect(result.current.loadingStaff).toBe(false));
-    expect(result.current.staff.length).toBeGreaterThanOrEqual(0);
-  });
-
-  it('liefert eine Statistik', async () => {
-    const { result } = renderHook(() => useStaff(), { wrapper });
-    await waitFor(() => expect(result.current.loadingStaff).toBe(false));
-    expect(result.current.stats).toBeTruthy();
-  });
-
-  it('meldet einen Ladefehler', async () => {
-    getAllUsers.mockRejectedValue(new Error('kein Zugriff'));
-    const { result } = renderHook(() => useStaff(), { wrapper });
-    await waitFor(() => expect(result.current.staffError).toBeTruthy());
-  });
 });
 
 describe('useDocuments', () => {

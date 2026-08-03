@@ -93,6 +93,65 @@ function renderInviteEmailHtml(payload: InviteEmailPayload): string {
   `;
 }
 
+export interface AssignmentFormEmailPayload {
+  to: string;
+  employeeName?: string;
+  formLink: string;
+  shiftInfo?: string;
+}
+
+function renderAssignmentFormEmailHtml(payload: AssignmentFormEmailPayload): string {
+  const greeting = payload.employeeName ? `Hallo ${payload.employeeName},` : 'Guten Tag,';
+  return `
+    <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111;">
+      <p>${greeting}</p>
+      <p>Sie wurden für einen Dienst zugewiesen.${payload.shiftInfo ? ` <strong>${payload.shiftInfo}</strong>` : ''}</p>
+      <p>Bitte füllen Sie die Einsatzmitteilung oder die Ablehnung über folgenden Link aus:</p>
+      <p>
+        <a href="${payload.formLink}" style="display:inline-block;background:#16a34a;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">
+          Formular öffnen
+        </a>
+      </p>
+      <p>Falls der Button nicht funktioniert, nutzen Sie diesen Link: <br/>
+        <a href="${payload.formLink}">${payload.formLink}</a>
+      </p>
+      <p>Vielen Dank!</p>
+    </div>
+  `;
+}
+
+/** Sendet die Formular-E-Mail zu einem Einsatz (ohne Auth – für HTTP-Aufruf aus der API). */
+export async function sendAssignmentFormEmailInternal(
+  data: AssignmentFormEmailPayload
+): Promise<{ success: boolean; fallback?: boolean }> {
+  const { to, formLink } = data || ({} as AssignmentFormEmailPayload);
+  if (!to || !formLink) {
+    return { success: false };
+  }
+  const result = await sendTemplatedEmail({
+    to,
+    subject: 'Einsatzmitteilung: Bitte Formular ausfüllen',
+    html: renderAssignmentFormEmailHtml(data),
+    text: [
+      data.employeeName ? `Hallo ${data.employeeName},` : 'Guten Tag,',
+      `Sie wurden für einen Dienst zugewiesen.${data.shiftInfo ? ` ${data.shiftInfo}` : ''}`,
+      `Bitte füllen Sie die Einsatzmitteilung über folgenden Link aus: ${formLink}`,
+    ].join('\n\n'),
+  });
+  return { success: !result.fallback, fallback: result.fallback };
+}
+
+/** Handler for lazy-load from index (avoids loading nodemailer at deploy). */
+export async function sendAssignmentFormEmailHandler(
+  data: AssignmentFormEmailPayload,
+  context: { auth?: { uid: string } }
+): Promise<{ success: boolean; fallback?: boolean }> {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+  }
+  return sendAssignmentFormEmailInternal(data);
+}
+
 /** Sendet die Einladungs-E-Mail (ohne Auth – für HTTP-Aufruf aus der API). */
 export async function sendInvitationEmailInternal(
   data: InviteEmailPayload

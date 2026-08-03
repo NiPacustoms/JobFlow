@@ -79,8 +79,25 @@ export function renderAssignmentFormEmailHtml(payload: AssignmentFormEmailPayloa
 }
 
 export async function sendAssignmentFormEmail(payload: AssignmentFormEmailPayload): Promise<void> {
-  // Nur Logging, kein Versand.
-  logger.info('[Email] Assignment Form', {}, { payload, html: renderAssignmentFormEmailHtml(payload) });
+  try {
+    // Dynamischer Import, um serverseitige Probleme zu vermeiden
+    if (typeof window === 'undefined') {
+      logger.warn('[Email] Called server-side, skipping email send', {}, { payload });
+      return;
+    }
+
+    const { functions } = await import('@/lib/firebase');
+    const { httpsCallable } = await import('firebase/functions');
+
+    if (!functions) {
+      throw new Error('Firebase Functions ist nicht initialisiert');
+    }
+    const call = httpsCallable(functions, 'sendAssignmentFormEmailCF');
+    await call(payload);
+  } catch (_e) {
+    // Fallback Logging, wenn CF nicht verfügbar
+    logger.warn('[Email:FALLBACK] Assignment Form', {}, { payload, html: renderAssignmentFormEmailHtml(payload) });
+  }
 }
 
 // Assignment-Signaturen-E-Mail

@@ -123,16 +123,31 @@ describe('renderAssignmentFormEmailHtml', () => {
 });
 
 describe('sendAssignmentFormEmail', () => {
-  it('protokolliert die Formular-Mail (kein Versand)', async () => {
-    await sendAssignmentFormEmail({
-      to: 'anna@aufabruf.eu',
-      formLink: 'https://schichtklar.example/form/1',
-    });
-    expect(loggerInfo).toHaveBeenCalledWith(
-      '[Email] Assignment Form',
+  const formular = {
+    to: 'anna@aufabruf.eu',
+    formLink: 'https://schichtklar.example/form/1',
+  };
+
+  it('ruft die Cloud Function auf', async () => {
+    await sendAssignmentFormEmail(formular);
+    expect(httpsCallableMock).toHaveBeenCalledWith(expect.anything(), 'sendAssignmentFormEmailCF');
+    expect(callMock).toHaveBeenCalledWith(formular);
+  });
+
+  it('protokolliert als Fallback, wenn Functions fehlen', async () => {
+    firebaseZustand.functions = null;
+    await expect(sendAssignmentFormEmail(formular)).resolves.toBeUndefined();
+    expect(loggerWarn).toHaveBeenCalledWith(
+      '[Email:FALLBACK] Assignment Form',
       {},
       expect.objectContaining({ html: expect.stringContaining('Formular öffnen') })
     );
+  });
+
+  it('protokolliert als Fallback, wenn der Aufruf scheitert', async () => {
+    callMock.mockRejectedValue(new Error('CF nicht erreichbar'));
+    await expect(sendAssignmentFormEmail(formular)).resolves.toBeUndefined();
+    expect(loggerWarn).toHaveBeenCalledWith('[Email:FALLBACK] Assignment Form', {}, expect.anything());
   });
 });
 

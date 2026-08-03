@@ -125,10 +125,14 @@ describe('getFCMToken', () => {
   });
 
   it('liefert null, wenn kein Service Worker vorbereitet werden kann', async () => {
+    // Vorab abgefangene Rejection, sonst meldet Vitest je nach Timing eine
+    // "Unhandled Rejection", obwohl der Code unter Test sie behandelt.
+    const nichtBereit = Promise.reject(new Error('nicht bereit'));
+    nichtBereit.catch(() => {});
     Object.defineProperty(navigator, 'serviceWorker', {
       value: serviceWorkerStub({
         getRegistration: vi.fn(async () => null),
-        ready: Promise.reject(new Error('nicht bereit')),
+        ready: nichtBereit,
       }),
       configurable: true,
       writable: true,

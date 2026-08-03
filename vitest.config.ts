@@ -68,18 +68,16 @@ export default defineConfig({
           lines: 100,
           branches: 100,
         },
-        'lib/services/holidayProvider.ts': {
-          statements: 100,
-          functions: 100,
-          lines: 100,
-          branches: 85,
-        },
         'lib/services/offlineQueue.ts': { statements: 85, functions: 85, lines: 85, branches: 75 },
         'lib/validations/**': { statements: 90, functions: 45, lines: 90, branches: 60 },
         // ── Globale Untergrenze (Ratsche: nur nach oben anpassen) ────────
+        // Ausnahme 03.08.2026: branches 74 → 73, weil die Entfernung von
+        // vollständig getestetem totem Code (staffGroups, invitations,
+        // holidayProvider u. a.) den Nenner um überdurchschnittlich gut
+        // abgedeckte Zweige verkleinert hat; functions dafür 82 → 85.
         statements: 83,
-        branches: 74,
-        functions: 82,
+        branches: 73,
+        functions: 85,
         lines: 83,
       },
     },

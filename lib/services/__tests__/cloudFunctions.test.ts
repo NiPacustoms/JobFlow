@@ -20,7 +20,7 @@ vi.mock('@/lib/logging', () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 
-import { cloudFunctions, shiftAssignmentHelpers } from '../cloudFunctions';
+import { cloudFunctions } from '../cloudFunctions';
 
 beforeEach(() => {
   aufrufe.forEach(fn => fn.mockReset().mockResolvedValue({ data: {} }));
@@ -218,39 +218,4 @@ describe('weitere Cloud-Function-Wrapper', () => {
   });
 });
 
-describe('shiftAssignmentHelpers', () => {
-  it('prüft Qualifikationen mit Punktzahl', () => {
-    expect(
-      shiftAssignmentHelpers.checkQualifications(['Intensiv'], ['Intensiv', 'OP'])
-    ).toEqual({ isQualified: false, missingQualifications: ['OP'], qualificationScore: 0.5 });
-    expect(shiftAssignmentHelpers.checkQualifications(['Intensiv'], [])).toMatchObject({
-      isQualified: true,
-      qualificationScore: 1,
-    });
-  });
 
-  it('formatiert Konflikte', () => {
-    expect(shiftAssignmentHelpers.formatConflicts([])).toBe('');
-    expect(shiftAssignmentHelpers.formatConflicts([{ facilityName: 'Haus A' }])).toContain('Haus A');
-    expect(shiftAssignmentHelpers.formatConflicts([{}, {}])).toBe('2 Zeitkonflikte gefunden');
-  });
-
-  it('liefert Score-Farben', () => {
-    expect(shiftAssignmentHelpers.getScoreColor(85)).toBe('text-green-600');
-    expect(shiftAssignmentHelpers.getScoreColor(65)).toBe('text-yellow-600');
-    expect(shiftAssignmentHelpers.getScoreColor(30)).toBe('text-red-600');
-  });
-
-  it('löscht alle Zuweisungen nur mit Bestätigungs-Token', async () => {
-    callableFuer('deleteAllAssignments').mockResolvedValue({
-      data: { success: true, deletedCount: 5, message: 'ok' },
-    });
-    const ergebnis = await shiftAssignmentHelpers.deleteAllAssignments('DELETE-ALL-ASSIGNMENTS');
-    expect(ergebnis.deletedCount).toBe(5);
-
-    callableFuer('deleteAllAssignments').mockRejectedValue({ code: 'functions/permission-denied' });
-    await expect(
-      shiftAssignmentHelpers.deleteAllAssignments('DELETE-ALL-ASSIGNMENTS')
-    ).rejects.toThrow('Nur Admins');
-  });
-});

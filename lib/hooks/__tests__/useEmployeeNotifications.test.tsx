@@ -4,37 +4,11 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 /**
- * Einstellungs-Hook (System, Rollen, Dokumenttypen) und der
  * Benachrichtigungs-Posteingang des Mitarbeiters.
  */
 
 const mockUser = { id: 'u1', companyId: 'firmaA', role: 'nurse' };
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: mockUser }) }));
-
-const getSettingsAll = vi.fn();
-const updateSection = vi.fn();
-const createUserRole = vi.fn();
-const updateUserRole = vi.fn();
-const deleteUserRole = vi.fn();
-const createDocType = vi.fn();
-const updateDocType = vi.fn();
-const deleteDocType = vi.fn();
-
-vi.mock('@/lib/services/settings', () => ({
-  settingsService: {
-    getAll: (...a: unknown[]) => getSettingsAll(...a),
-    updateSection: (...a: unknown[]) => updateSection(...a),
-    createUserRole: (...a: unknown[]) => createUserRole(...a),
-    updateUserRole: (...a: unknown[]) => updateUserRole(...a),
-    deleteUserRole: (...a: unknown[]) => deleteUserRole(...a),
-    createDocumentType: (...a: unknown[]) => createDocType(...a),
-    updateDocumentType: (...a: unknown[]) => updateDocType(...a),
-    deleteDocumentType: (...a: unknown[]) => deleteDocType(...a),
-    exportSettings: vi.fn(async () => new Blob(['{}'])),
-    importSettings: vi.fn(async () => undefined),
-    initializeDefaultSettings: vi.fn(async () => undefined),
-  },
-}));
 
 const getNotifications = vi.fn();
 const getNotifSettings = vi.fn();
@@ -65,7 +39,6 @@ vi.mock('@/lib/utils/toast', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
 
-import { useSettings } from '../useSettings';
 import { useEmployeeNotifications } from '../useEmployeeNotifications';
 
 let client: QueryClient;
@@ -77,53 +50,9 @@ beforeEach(() => {
   client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  getSettingsAll.mockResolvedValue({
-    general: { systemName: 'Schichtklar' },
-    userRoles: [],
-    documentTypes: [],
-  });
   getNotifications.mockResolvedValue([]);
   getNotifSettings.mockResolvedValue({ emailNotifications: true });
   getUnreadCount.mockResolvedValue(0);
-});
-
-describe('useSettings', () => {
-  it('lädt die Einstellungen', async () => {
-    const { result } = renderHook(() => useSettings(), { wrapper });
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-    expect(result.current.settings).toBeTruthy();
-  });
-
-  it('aktualisiert einen Bereich', async () => {
-    updateSection.mockResolvedValue(undefined);
-    const { result } = renderHook(() => useSettings(), { wrapper });
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-    await act(async () => {
-      await result.current.updateSettings('general' as never, { systemName: 'Neu' } as never);
-    });
-    expect(updateSection).toHaveBeenCalled();
-  });
-
-  it('verwaltet Nutzerrollen', async () => {
-    createUserRole.mockResolvedValue('r1');
-    deleteUserRole.mockResolvedValue(undefined);
-    const { result } = renderHook(() => useSettings(), { wrapper });
-    await waitFor(() => expect(result.current.isLoading).toBe(false));
-
-    await act(async () => {
-      await result.current.createUserRole({ name: 'Disponent' } as never);
-      await result.current.deleteUserRole('r1');
-    });
-    expect(createUserRole).toHaveBeenCalled();
-    expect(deleteUserRole).toHaveBeenCalledWith('r1');
-  });
-
-  it('meldet einen Ladefehler', async () => {
-    getSettingsAll.mockRejectedValue(new Error('kein Zugriff'));
-    const { result } = renderHook(() => useSettings(), { wrapper });
-    await waitFor(() => expect(result.current.error).toBeTruthy());
-  });
 });
 
 describe('useEmployeeNotifications', () => {

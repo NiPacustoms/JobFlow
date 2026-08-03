@@ -32,7 +32,7 @@ import {
   Paper,
 } from '@mui/material';
 import { Button } from '@mui/material';
-import { Upload, Edit } from '@mui/icons-material';
+import { Upload, Edit, Download } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { StaffEditDialog } from '@/components/admin/StaffEditDialog';
 import { WeeklyLimitKpi } from '@/components/admin/WeeklyLimitKpi';
@@ -51,6 +51,43 @@ export default function AdminEmployeeDetailPage() {
   const [showIban, setShowIban] = useState(false);
   const [showDocumentUpload, setShowDocumentUpload] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportUserData = async () => {
+    if (!uid) return;
+    setIsExporting(true);
+    try {
+      const { getAuth } = await import('firebase/auth');
+      const currentUser = getAuth().currentUser;
+      if (!currentUser) throw new Error('Nicht angemeldet');
+      const token = await currentUser.getIdToken();
+      const response = await fetch(`/api/admin/user/${uid}/data-export`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(
+          (error as { message?: string }).message || 'Fehler beim Exportieren'
+        );
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `schichtklar-data-export-${uid}-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      toast.success('Datenexport heruntergeladen (DSGVO Art. 15).');
+    } catch (error) {
+      toast.error(
+        `Datenexport fehlgeschlagen: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`
+      );
+    } finally {
+      setIsExporting(false);
+    }
+  };
   const { user: authUser } = useAuth();
   const { hasPermission } = usePermissions();
   const queryClient = useQueryClient();
@@ -226,13 +263,23 @@ export default function AdminEmployeeDetailPage() {
             </Box>
           </Box>
           {hasPermission('manage_staff') && (
-            <Button
-              variant="outlined"
-              startIcon={<Edit />}
-              onClick={() => setEditDialogOpen(true)}
-            >
-              Bearbeiten
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <Button
+                variant="outlined"
+                startIcon={<Download />}
+                onClick={exportUserData}
+                disabled={isExporting}
+              >
+                {isExporting ? 'Exportiere…' : 'Datenexport (DSGVO)'}
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<Edit />}
+                onClick={() => setEditDialogOpen(true)}
+              >
+                Bearbeiten
+              </Button>
+            </Box>
           )}
         </Box>
 
