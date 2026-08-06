@@ -49,15 +49,6 @@ export interface DocumentType {
   updatedAt: Date;
 }
 
-export interface SystemInfo {
-  status: string;
-  version: string;
-  uptime: string;
-  storage: string;
-  memory: string;
-  cpu: string;
-  network: string;
-}
 
 export function useAdminSettings() {
   const queryClient = useQueryClient();
@@ -97,18 +88,6 @@ export function useAdminSettings() {
   } = useQuery({
     queryKey: ['adminDocumentTypes'],
     queryFn: () => adminSettingsService.getDocumentTypes(),
-    enabled: isAdmin, // Only fetch if user is admin
-    retry: false, // Don't retry on permission errors
-  });
-
-  // Get system info
-  const {
-    data: systemInfo,
-    isLoading: systemInfoLoading,
-    error: systemInfoError,
-  } = useQuery({
-    queryKey: ['adminSystemInfo'],
-    queryFn: () => adminSettingsService.getSystemInfo(),
     enabled: isAdmin, // Only fetch if user is admin
     retry: false, // Don't retry on permission errors
   });
@@ -197,38 +176,13 @@ export function useAdminSettings() {
     },
   });
 
-  // Backup data mutation
-  const backupDataMutation = useMutation({
-    mutationFn: () => adminSettingsService.backupData(),
-    onSuccess: (backupUrl) => {
-      if (backupUrl) {
-        const a = document.createElement('a');
-        a.href = backupUrl;
-        a.download = `backup-${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
-      queryClient.invalidateQueries({ queryKey: ['adminSettings'] });
-      toast.success('Backup erfolgreich erstellt');
-    },
-    onError: (error) => {
-      toast.error('Fehler beim Erstellen des Backups: ' + error.message);
-    },
-  });
-
-  // Restore data mutation
-  const restoreDataMutation = useMutation({
-    mutationFn: (file: File) => adminSettingsService.restoreData(file),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['adminSettings'] });
-      queryClient.invalidateQueries({ queryKey: ['adminRoles'] });
-      queryClient.invalidateQueries({ queryKey: ['adminDocumentTypes'] });
-      toast.success('Daten erfolgreich wiederhergestellt');
-    },
-    onError: (error) => {
-      toast.error('Fehler beim Wiederherstellen der Daten: ' + error.message);
-    },
+  // Status der täglichen serverseitigen Firestore-Sicherung
+  const { data: backupStatus = null, isLoading: isLoadingBackupStatus } = useQuery({
+    queryKey: ['adminBackupStatus'],
+    queryFn: () => adminSettingsService.getBackupStatus(),
+    enabled: isAdmin,
+    retry: false,
+    staleTime: 60 * 1000,
   });
 
   // Helper functions
@@ -260,14 +214,6 @@ export function useAdminSettings() {
     return deleteDocumentTypeMutation.mutateAsync(id);
   };
 
-  const backupData = async () => {
-    return backupDataMutation.mutateAsync();
-  };
-
-  const restoreData = async (file: File) => {
-    return restoreDataMutation.mutateAsync(file);
-  };
-
   return {
     settings: settings || {
       systemName: 'Schichtklar',
@@ -288,17 +234,8 @@ export function useAdminSettings() {
     },
     roles,
     documentTypes,
-    systemInfo: systemInfo || {
-      status: 'Online',
-      version: '1.0.0',
-      uptime: '99.9%',
-      storage: '2.5 GB',
-      memory: '512 MB',
-      cpu: '15%',
-      network: 'Gut',
-    },
-    isLoading: settingsLoading || rolesLoading || documentTypesLoading || systemInfoLoading,
-    error: settingsError || rolesError || documentTypesError || systemInfoError,
+    isLoading: settingsLoading || rolesLoading || documentTypesLoading,
+    error: settingsError || rolesError || documentTypesError,
     updateSettings,
     createRole,
     updateRole,
@@ -306,12 +243,10 @@ export function useAdminSettings() {
     createDocumentType,
     updateDocumentType,
     deleteDocumentType,
-    backupData,
-    restoreData,
+    backupStatus,
+    isLoadingBackupStatus,
     isUpdating: updateSettingsMutation.isPending,
     isCreating: createRoleMutation.isPending || createDocumentTypeMutation.isPending,
     isDeleting: deleteRoleMutation.isPending || deleteDocumentTypeMutation.isPending,
-    isBackingUp: backupDataMutation.isPending,
-    isRestoring: restoreDataMutation.isPending,
   };
 }

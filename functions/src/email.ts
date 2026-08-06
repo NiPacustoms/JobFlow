@@ -93,38 +93,63 @@ function renderInviteEmailHtml(payload: InviteEmailPayload): string {
   `;
 }
 
-/**
- * Versand per Resend (https://resend.com) – nur API-Key nötig, kein SMTP.
- * Env: RESEND_API_KEY (Pflicht), optional RESEND_FROM (z. B. "Schichtklar <noreply@ihredomain.de>").
- */
-async function sendInvitationViaResend(
-  payload: InviteEmailPayload,
-  html: string,
-  text: string
-): Promise<{ success: boolean; fallback?: boolean }> {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  if (!apiKey) return { success: false, fallback: true };
+export interface AssignmentFormEmailPayload {
+  to: string;
+  employeeName?: string;
+  formLink: string;
+  shiftInfo?: string;
+}
 
-  const from = process.env.RESEND_FROM?.trim() || 'Schichtklar <onboarding@resend.dev>';
-  try {
-    const { Resend } = await import('resend');
-    const resend = new Resend(apiKey);
-    const { error } = await resend.emails.send({
-      from,
-      to: payload.to,
-      subject: 'Einladung zu Schichtklar',
-      html,
-      text,
-    });
-    if (error) {
-      console.error('[Email:Resend]', error);
-      return { success: false, fallback: true };
-    }
-    return { success: true };
-  } catch (e) {
-    console.error('[Email:Resend]', e);
-    return { success: false, fallback: true };
+function renderAssignmentFormEmailHtml(payload: AssignmentFormEmailPayload): string {
+  const greeting = payload.employeeName ? `Hallo ${payload.employeeName},` : 'Guten Tag,';
+  return `
+    <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111;">
+      <p>${greeting}</p>
+      <p>Sie wurden für einen Dienst zugewiesen.${payload.shiftInfo ? ` <strong>${payload.shiftInfo}</strong>` : ''}</p>
+      <p>Bitte füllen Sie die Einsatzmitteilung oder die Ablehnung über folgenden Link aus:</p>
+      <p>
+        <a href="${payload.formLink}" style="display:inline-block;background:#16a34a;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;">
+          Formular öffnen
+        </a>
+      </p>
+      <p>Falls der Button nicht funktioniert, nutzen Sie diesen Link: <br/>
+        <a href="${payload.formLink}">${payload.formLink}</a>
+      </p>
+      <p>Vielen Dank!</p>
+    </div>
+  `;
+}
+
+/** Sendet die Formular-E-Mail zu einem Einsatz (ohne Auth – für HTTP-Aufruf aus der API). */
+export async function sendAssignmentFormEmailInternal(
+  data: AssignmentFormEmailPayload
+): Promise<{ success: boolean; fallback?: boolean }> {
+  const { to, formLink } = data || ({} as AssignmentFormEmailPayload);
+  if (!to || !formLink) {
+    return { success: false };
   }
+  const result = await sendTemplatedEmail({
+    to,
+    subject: 'Einsatzmitteilung: Bitte Formular ausfüllen',
+    html: renderAssignmentFormEmailHtml(data),
+    text: [
+      data.employeeName ? `Hallo ${data.employeeName},` : 'Guten Tag,',
+      `Sie wurden für einen Dienst zugewiesen.${data.shiftInfo ? ` ${data.shiftInfo}` : ''}`,
+      `Bitte füllen Sie die Einsatzmitteilung über folgenden Link aus: ${formLink}`,
+    ].join('\n\n'),
+  });
+  return { success: !result.fallback, fallback: result.fallback };
+}
+
+/** Handler for lazy-load from index (avoids loading nodemailer at deploy). */
+export async function sendAssignmentFormEmailHandler(
+  data: AssignmentFormEmailPayload,
+  context: { auth?: { uid: string } }
+): Promise<{ success: boolean; fallback?: boolean }> {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Authentication required.');
+  }
+  return sendAssignmentFormEmailInternal(data);
 }
 
 /** Sendet die Einladungs-E-Mail (ohne Auth – für HTTP-Aufruf aus der API). */
@@ -141,11 +166,6 @@ export async function sendInvitationEmailInternal(
     `Sie wurden von ${company} eingeladen, Schichtklar zu nutzen.`,
     `Bitte öffnen Sie innerhalb von 24 Stunden folgenden Link: ${acceptLink}`,
   ].join('\n\n');
-
-  if (process.env.RESEND_API_KEY?.trim()) {
-    const res = await sendInvitationViaResend({ to, companyName: company, acceptLink }, html, text);
-    if (res.success) return res;
-  }
 
   const result = await sendTemplatedEmail({
     to,

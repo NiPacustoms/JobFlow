@@ -2,6 +2,9 @@ import { firebaseStorageService } from '@/lib/services/firebaseStorage';
 import {
   drawFooters,
   drawLetterhead,
+  formatDateDE,
+  formatDateTimeDE,
+  formatHoursDE,
   kvLine,
   sectionTitle,
   PDF_COLORS,
@@ -45,14 +48,14 @@ export const timesheetProofService = {
     const margin = PDF_MARGIN;
     let y = await drawLetterhead(doc, {
       title: 'Tagesnachweis – Einrichtung',
-      subtitle: `Einsatz am ${new Date(input.timesheet.date).toLocaleDateString('de-DE')}`,
+      subtitle: `Einsatz am ${formatDateDE(input.timesheet.date)}`,
     });
 
     // Angaben
     y = sectionTitle(doc, y, 'Angaben');
     y = kvLine(doc, y, 'Mitarbeiter/in', `${input.employee.name || input.employee.id}${input.employee.email ? ` (${input.employee.email})` : ''}`);
     y = kvLine(doc, y, 'Einrichtung', `${input.facility?.name || '–'}${input.facility?.address ? ' · ' + input.facility.address : ''}`);
-    y = kvLine(doc, y, 'Datum', new Date(input.timesheet.date).toLocaleDateString('de-DE'));
+    y = kvLine(doc, y, 'Datum', formatDateDE(input.timesheet.date));
 
     // Arbeitszeiten
     y += 4;
@@ -60,7 +63,7 @@ export const timesheetProofService = {
     y = kvLine(doc, y, 'Start', input.timesheet.startTime || '–');
     y = kvLine(doc, y, 'Ende', input.timesheet.endTime || '–');
     y = kvLine(doc, y, 'Pause', `${input.timesheet.breakMinutes ?? 0} Min`);
-    y = kvLine(doc, y, 'Gesamt', `${input.timesheet.totalHours ?? 0} h`);
+    y = kvLine(doc, y, 'Gesamt', formatHoursDE(input.timesheet.totalHours));
 
     if (input.timesheet.notes) {
       y += 4;
@@ -90,7 +93,7 @@ export const timesheetProofService = {
       y,
       'Unterschrieben am',
       input.timesheet.facilitySignedAt
-        ? new Date(input.timesheet.facilitySignedAt).toLocaleString('de-DE')
+        ? formatDateTimeDE(input.timesheet.facilitySignedAt)
         : '–'
     );
 

@@ -11,7 +11,7 @@ Praktische Checkliste für die technische Übergabe an einen Käufer. Ziel: der 
 | **Firebase-/Google-Cloud-Projekt** (`schichtklar`) | Entweder Projekt-Ownership übertragen (IAM: neuen Owner hinzufügen, alten entfernen) **oder** neues Käufer-Projekt anlegen + Daten migrieren (siehe `INFRASTRUCTURE_RENAMING.md`). Empfehlung: **neues Projekt** für saubere Trennung. |
 | **GitHub-Repository** | Repo-Transfer an Käufer-Org **oder** Fresh-Clone in neues Repo. Danach GitHub-Secrets neu setzen. |
 | **Domain** | Beim Registrar auf Käufer übertragen; DNS auf Firebase Hosting zeigen lassen. |
-| **E-Mail-Dienst** (Resend/SMTP) | Neues Käufer-Konto; API-Key/SMTP-Zugang neu erzeugen. |
+| **E-Mail-Dienst** (SMTP) | Neues Käufer-Postfach; SMTP-Zugang neu erzeugen. |
 | **Sentry** | Neues Käufer-Projekt; DSN in ENV tauschen. |
 | **OpenRouteService** | Neuen API-Key des Käufers eintragen. |
 
@@ -20,7 +20,7 @@ Praktische Checkliste für die technische Übergabe an einen Käufer. Ziel: der 
 Alle Zugangsdaten neu erzeugen und alte widerrufen:
 - Firebase Service-Account (neu erstellen, altes Key-File löschen) → GitHub-Secret `FIREBASE_SERVICE_ACCOUNT_*` neu setzen.
 - Firebase Web-API-Config (bei neuem Projekt automatisch neu).
-- `RESEND_API_KEY` / SMTP-Zugang, `INVITATION_EMAIL_SECRET`, `ORS_API_KEY`, `SECURITY_WEBHOOK_URL`.
+- SMTP-Zugang, `INVITATION_EMAIL_SECRET`, `ORS_API_KEY`, `SECURITY_WEBHOOK_URL`.
 - Firebase Auth: bestehende Sessions invalidieren (bei Projektwechsel ohnehin).
 
 > Es liegen **keine** Secret-Werte im Repository (nur `.env*.example`-Platzhalter).
@@ -55,7 +55,7 @@ Alle Zugangsdaten neu erzeugen und alte widerrufen:
 ## 7. Externe Dienste & laufende Kosten (Größenordnung)
 
 - **Firebase/GCP:** verbrauchsabhängig (Firestore-Reads/Writes, Storage, Functions-Invocations, Hosting-Bandbreite). Für kleine Teams i. d. R. gering; skaliert mit Nutzung.
-- **Resend/SMTP:** E-Mail-Kontingent (Einladungen/Benachrichtigungen).
+- **SMTP-Anbieter:** E-Mail-Kontingent (Einladungen/Benachrichtigungen).
 - **Sentry:** Free/Team-Tier je nach Event-Volumen.
 - **OpenRouteService:** Free-Tier mit Limits; kommerziell ggf. kostenpflichtig.
 

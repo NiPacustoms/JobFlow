@@ -1,5 +1,6 @@
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions/v1';
+import { releaseShiftCapacity } from './utils/shiftCapacity';
 
 const db = admin.firestore();
 
@@ -52,6 +53,11 @@ export const unassignShift = functions.https.onCall(async (data, context) => {
 
       const shift = shiftDoc.data()!;
 
+      // Alle Reads VOR den Writes (Firestore-Transaktionsregel): User für die
+      // Notification-Collection jetzt lesen, nicht nach den Updates.
+      const userRef = db.collection('users').doc(assignment.userId);
+      const userDoc = await transaction.get(userRef);
+
       // 4. Assignment löschen oder als declined markieren
       if (assignment.status === 'requested') {
         // Bei Anfragen: Assignment löschen
@@ -66,9 +72,14 @@ export const unassignShift = functions.https.onCall(async (data, context) => {
         });
       }
 
-      // 5. Shift-Kapazität aktualisieren (Status: 'open' | 'filled' | 'cancelled')
-      const newAssignedCount = Math.max(0, (shift.assignedCount || 0) - 1);
-      const newStatus = newAssignedCount === 0 ? 'open' : 'filled';
+      // 5. Shift-Kapazität aktualisieren (gemeinsame Regel, siehe utils/shiftCapacity).
+      // Nur belegende Status ('assigned' | 'accepted' | 'pending') dekrementieren:
+      // Ein bereits abgelehntes oder nur angefragtes Assignment hat keinen Platz
+      // belegt – es erneut abzuziehen würde den Zähler dauerhaft verfälschen.
+      const { assignedCount: newAssignedCount, status: newStatus } = releaseShiftCapacity(
+        shift,
+        assignment.status
+      );
 
       transaction.update(shiftRef, {
         assignedCount: newAssignedCount,
@@ -77,8 +88,6 @@ export const unassignShift = functions.https.onCall(async (data, context) => {
       });
 
       // 6. Notification an betroffenen User (in richtige Collection basierend auf User-Rolle)
-      const userRef = db.collection('users').doc(assignment.userId);
-      const userDoc = await transaction.get(userRef);
       const userRole = userDoc.exists ? (userDoc.data()?.role || 'nurse') : 'nurse';
       const notificationCollection = userRole === 'nurse' ? 'employeeNotifications' : 'notifications';
       

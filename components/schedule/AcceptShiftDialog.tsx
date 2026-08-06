@@ -27,7 +27,6 @@ interface AcceptShiftDialogProps {
   assignment: Assignment;
   onAccept: () => void;
   getShiftTypeColor: (type: string) => string;
-  checkBreakRule: (assignment: Assignment) => boolean;
 }
 
 export function AcceptShiftDialog({
@@ -35,7 +34,6 @@ export function AcceptShiftDialog({
   onClose,
   assignment,
   onAccept,
-  checkBreakRule,
 }: AcceptShiftDialogProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [shiftDetails, setShiftDetails] = useState<{
@@ -116,7 +114,6 @@ export function AcceptShiftDialog({
   const stationLabel = shiftDetails?.stationName;
   const shiftTypeLabel = 'Schicht';
 
-  const hasBreakRuleViolation = !checkBreakRule(assignment);
 
   return (
     <Dialog
@@ -198,26 +195,6 @@ export function AcceptShiftDialog({
           </Box>
         )}
 
-        {/* Break Rule Warning */}
-        {hasBreakRuleViolation && (
-          <Alert
-            severity="warning"
-            sx={{
-              mb: 3,
-              borderRadius: 2,
-              border: '1px solid',
-              borderColor: 'warning.main',
-            }}
-          >
-            <Typography variant="body2" fontWeight={600}>
-              ⚠️ Pausenregel-Verletzung
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 0.5 }}>
-              Diese Schicht verletzt die 11-Stunden-Pausenregel. Bist du sicher, dass du sie
-              trotzdem annehmen möchtest?
-            </Typography>
-          </Alert>
-        )}
 
         {/* Assignment Notes */}
         {assignment.notes && (
@@ -250,22 +227,6 @@ export function AcceptShiftDialog({
           </Typography>
         </Alert>
 
-        {/* Break Rule Information */}
-        {!hasBreakRuleViolation && (
-          <Alert
-            severity="success"
-            sx={{
-              mb: 2,
-              borderRadius: 2,
-              border: '1px solid',
-              borderColor: 'success.main',
-            }}
-          >
-            <Typography variant="body2">
-              ✓ Pausenregel eingehalten: Mindestens 11 Stunden zwischen den Schichten
-            </Typography>
-          </Alert>
-        )}
       </DialogContent>
 
       <DialogActions sx={{ p: 3, pt: 2 }}>
@@ -283,7 +244,7 @@ export function AcceptShiftDialog({
         <Button
           onClick={onAccept}
           variant="contained"
-          color={hasBreakRuleViolation ? 'warning' : 'success'}
+          color="success"
           startIcon={<CheckCircle />}
           sx={{
             textTransform: 'none',
@@ -293,7 +254,7 @@ export function AcceptShiftDialog({
             boxShadow: 'var(--shadow-soft)',
           }}
         >
-          {hasBreakRuleViolation ? 'Trotzdem annehmen' : 'Schicht annehmen'}
+          Schicht annehmen
         </Button>
       </DialogActions>
     </Dialog>

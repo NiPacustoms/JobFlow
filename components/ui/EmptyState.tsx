@@ -11,7 +11,6 @@ import {
   DocumentScanner,
   CalendarToday,
   TrendingUp,
-  Euro,
   Search,
   FilterList,
 } from '@mui/icons-material';
@@ -233,15 +232,6 @@ export const EmptyFilters: React.FC<{
     title="Keine Ergebnisse"
     description="Ihre aktuellen Filter zeigen keine Ergebnisse. Versuchen Sie andere Filtereinstellungen."
     action={onClearFilters ? { label: 'Filter zurücksetzen', onClick: onClearFilters } : undefined}
-  />
-);
-
-export const EmptySurcharges: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => (
-  <EmptyState
-    icon={<Euro />}
-    title="Keine Zuschläge"
-    description="Es sind noch keine Zuschläge verfügbar. Neue Zuschläge werden hier angezeigt."
-    action={onRefresh ? { label: 'Aktualisieren', onClick: onRefresh } : undefined}
   />
 );
 

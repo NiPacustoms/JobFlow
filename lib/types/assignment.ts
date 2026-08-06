@@ -56,6 +56,13 @@ export interface Assignment {
   pdfGenerated?: boolean;
   pdfGeneratedAt?: Date;
   pdfUrl?: string;
+  /**
+   * Einsatzmitteilung (§ 11 AÜG) aus dem Mitarbeiter-Formular. BEWUSST getrennt
+   * von pdfUrl/pdfGenerated: Diese Felder steuern den Stundennachweis-Lauf
+   * (Signatur-PDF + Mailversand) und dürfen vom Formular nicht belegt werden.
+   */
+  formPdfUrl?: string;
+  formPdfGeneratedAt?: Date;
   pdfSentTo?: {
     employee: boolean;
     admin: boolean;

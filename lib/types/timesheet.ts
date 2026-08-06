@@ -31,7 +31,6 @@ export interface Timesheet {
   totalHours: number;
   startDate: Date;
   endDate: Date;
-  surchargeAmount?: number;
   nightHours?: number;
   weekendHours?: number;
   holidayHours?: number;
@@ -52,6 +51,8 @@ export interface Timesheet {
   facilitySignedBy?: string;
   facilityConfirmationStatus?: 'performed' | 'aborted' | 'no-show';
   facilitySignerName?: string;
+  /** Anmerkung der Einrichtung zur Tagesbestätigung. */
+  facilityNotes?: string;
 }
 
 export interface TimesheetForm {

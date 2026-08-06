@@ -10,6 +10,7 @@ import {
 import { createAppError, ErrorCode } from '@/lib/errors/ErrorTypes';
 import { FieldValue } from 'firebase-admin/firestore';
 import { logger } from '@/lib/logging';
+import { checkRateLimit } from '@/lib/middleware/rateLimit';
 
 export const runtime = 'nodejs';
 
@@ -32,6 +33,10 @@ function generateToken(length = 48): string {
 // Der einladende Admin und dessen companyId werden AUS DEM TOKEN abgeleitet –
 // niemals aus dem Request-Body (sonst Spoofing fremder Companies möglich).
 export async function POST(req: NextRequest) {
+  const rateLimitResponse = checkRateLimit(req);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
   let ctx;
   try {
     ctx = await requireAuthContext(req, { role: 'admin' });
@@ -78,8 +83,24 @@ export async function POST(req: NextRequest) {
     if (existing) {
       const d = existing.data();
       invitationId = existing.id;
-      token = d.token as string;
-      expiresAt = (d.expiresAt as { toDate?: () => Date })?.toDate?.() ?? new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const existingToken = d.token as string | undefined;
+      const existingExpiry = (d.expiresAt as { toDate?: () => Date })?.toDate?.() ?? null;
+      const isExpired = !existingExpiry || existingExpiry.getTime() <= Date.now();
+      if (isExpired || !existingToken) {
+        // Abgelaufene Einladung: Token UND Ablauf erneuern – sonst verschickt das
+        // erneute Einladen exakt den alten Link, der sofort "abgelaufen" meldet.
+        token = generateToken(48);
+        expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await existing.ref.update({
+          token,
+          expiresAt,
+          createdByUserId: adminUid,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      } else {
+        token = existingToken;
+        expiresAt = existingExpiry;
+      }
     } else {
       token = generateToken(48);
       expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -138,6 +159,10 @@ export async function POST(req: NextRequest) {
 // GET /api/invitations
 // Auth: Bearer-Token eines Admins. Liefert die Einladungen der EIGENEN Company.
 export async function GET(req: NextRequest) {
+  const rateLimitResponse = checkRateLimit(req);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
   let ctx;
   try {
     ctx = await requireAuthContext(req, { role: 'admin' });

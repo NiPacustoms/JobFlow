@@ -29,7 +29,7 @@ export interface Report {
   id: string;
   userId: string;
   companyId: string; // Mandantenzugehörigkeit
-  type: 'timesheet' | 'allowances' | 'shifts' | 'summary';
+  type: 'timesheet' | 'shifts' | 'summary';
   title: string;
   description: string;
   period: string;
@@ -66,25 +66,6 @@ export interface TimeAccountReport {
     totalHours: number;
     regularHours: number;
     overtimeHours: number;
-    surchargeAmount: number;
-  }>;
-}
-
-export interface SurchargeReport {
-  totalSurcharge: number;
-  nightSurcharge: number;
-  weekendSurcharge: number;
-  holidaySurcharge: number;
-  overtimeSurcharge: number;
-  averageSurchargePerDay: number;
-  averageSurchargePerWeek: number;
-  surchargeTrend: 'up' | 'down' | 'flat';
-  surchargeByDay: Array<{
-    day: string;
-    nightSurcharge: number;
-    weekendSurcharge: number;
-    holidaySurcharge: number;
-    overtimeSurcharge: number;
   }>;
 }
 
@@ -151,7 +132,7 @@ export const reportService = {
 
   // Generate new report
   async generateReport(data: {
-    type: 'timesheet' | 'allowances' | 'shifts' | 'summary';
+    type: 'timesheet' | 'shifts' | 'summary';
     period: 'current-month' | 'last-month' | 'current-quarter' | 'current-year' | 'custom';
     format: 'pdf' | 'excel' | 'csv';
     userId?: string; // Optional userId parameter
@@ -452,7 +433,6 @@ export const reportService = {
   getReportTitle(type: string, period: string): string {
     const typeNames = {
       timesheet: 'Arbeitszeit-Bericht',
-      allowances: 'Zuschläge-Bericht',
       shifts: 'Schichten-Bericht',
       summary: 'Zusammenfassung',
     };
@@ -471,7 +451,6 @@ export const reportService = {
   getReportDescription(type: string, _period: string): string {
     const descriptions = {
       timesheet: 'Detaillierte Übersicht über Arbeitszeiten, Pausen und Überstunden',
-      allowances: 'Aufschlüsselung aller Zuschläge für Nacht-, Wochenend- und Feiertagsarbeit',
       shifts: 'Vollständige Liste aller abgeschlossenen Schichten mit Bewertungen',
       summary: 'Umfassende Zusammenfassung aller Arbeitsdaten und Statistiken',
     };
@@ -490,11 +469,6 @@ export const reportService = {
         value: 'timesheet',
         label: 'Arbeitszeit',
         description: 'Detaillierte Arbeitszeit-Übersicht',
-      },
-      {
-        value: 'allowances',
-        label: 'Zuschläge',
-        description: 'Zuschläge für Nacht-, Wochenend- und Feiertagsarbeit',
       },
       {
         value: 'shifts',
@@ -599,7 +573,27 @@ export const reportService = {
         overtimeHours: timesheet.overtimeHours || 0,
       }));
 
-      const userName = filters.userId ? (await userService.getById(filters.userId))?.displayName ?? '' : '';
+      // Pro Mitarbeiter aggregieren (echte Daten, auch ohne userId-Filter)
+      const perUser = new Map<string, { totalHours: number; regularHours: number; overtimeHours: number }>();
+      for (const ts of timesheets) {
+        const entry = perUser.get(ts.userId) || { totalHours: 0, regularHours: 0, overtimeHours: 0 };
+        entry.totalHours += ts.totalHours || 0;
+        entry.regularHours += ts.regularHours || 0;
+        entry.overtimeHours += ts.overtimeHours || 0;
+        perUser.set(ts.userId, entry);
+      }
+      const employees = await Promise.all(
+        Array.from(perUser.entries()).map(async ([userId, sums]) => {
+          let userName = '';
+          try {
+            userName = (await userService.getById(userId))?.displayName ?? '';
+          } catch {
+            // Name nicht auflösbar → leer lassen
+          }
+          return { userId, userName: userName || 'Unbekannt', ...sums };
+        })
+      );
+      employees.sort((a, b) => b.totalHours - a.totalHours);
 
       return [{
         totalHours,
@@ -611,67 +605,12 @@ export const reportService = {
         averageHoursPerDay: totalHours / daysDiff,
         averageHoursPerWeek: totalHours / (daysDiff / 7),
         workingDays: daysDiff,
-        trend: 'up' as const,
+        trend: 'flat' as const,
         hoursByDay,
-        employees: filters.userId ? [
-          {
-            userId: filters.userId,
-            userName,
-            totalHours,
-            regularHours,
-            overtimeHours,
-            surchargeAmount: (nightHours * 2) + (weekendHours * 1.5) + (holidayHours * 2.5)
-          }
-        ] : []
+        employees,
       }];
     } catch (error) {
       logger.error('Error generating time account report', error instanceof Error ? error : new Error(String(error)));
-      throw error;
-    }
-  },
-
-  async generateSurchargeReport(filters: { period?: string; userId?: string; startDate?: Date; endDate?: Date }): Promise<SurchargeReport[]> {
-    try {
-      const endDate = filters.endDate || new Date();
-      const startDate = filters.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-      
-      // Get real timesheet data
-      const timesheets = await timesheetService.getTimesheetsByDateRange(startDate, endDate, filters.userId);
-      
-      // Calculate surcharges from real data
-      const surchargeByDay = timesheets.map(timesheet => {
-        const nightSurcharge = (timesheet.nightHours || 0) * 2.5; // €2.50 per night hour
-        const weekendSurcharge = (timesheet.weekendHours || 0) * 1.5; // €1.50 per weekend hour
-        const holidaySurcharge = (timesheet.holidayHours || 0) * 3.0; // €3.00 per holiday hour
-        const overtimeSurcharge = (timesheet.overtimeHours || 0) * 1.25; // €1.25 per overtime hour
-        
-        return {
-          day: timesheet.date instanceof Date ? timesheet.date.toISOString().slice(0, 10) : new Date(timesheet.date).toISOString().slice(0, 10),
-          nightSurcharge,
-          weekendSurcharge,
-          holidaySurcharge,
-          overtimeSurcharge,
-        };
-      });
-      
-      const totalSurcharge = surchargeByDay.reduce((sum, day) => 
-        sum + day.nightSurcharge + day.weekendSurcharge + day.holidaySurcharge + day.overtimeSurcharge, 0
-      );
-      
-      return [{
-        totalSurcharge,
-        nightSurcharge: surchargeByDay.reduce((sum, day) => sum + day.nightSurcharge, 0),
-        weekendSurcharge: surchargeByDay.reduce((sum, day) => sum + day.weekendSurcharge, 0),
-        holidaySurcharge: surchargeByDay.reduce((sum, day) => sum + day.holidaySurcharge, 0),
-        overtimeSurcharge: surchargeByDay.reduce((sum, day) => sum + day.overtimeSurcharge, 0),
-        averageSurchargePerDay: totalSurcharge / daysDiff,
-        averageSurchargePerWeek: totalSurcharge / (daysDiff / 7),
-        surchargeTrend: 'up' as const,
-        surchargeByDay
-      }];
-    } catch (error) {
-      logger.error('Error generating surcharge report', error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
   },
@@ -768,18 +707,6 @@ export const reportService = {
   },
 
   async exportTimeAccountReport(data: { reportId: string }, _filters: unknown): Promise<string> {
-    return this.exportReport(data.reportId, 'csv');
-  },
-
-  async exportSurchargeReportPDF(data: { reportId: string }, _filters: unknown): Promise<string> {
-    return this.exportReport(data.reportId, 'pdf');
-  },
-
-  async exportSurchargeReportExcel(data: { reportId: string }, _filters: unknown): Promise<string> {
-    return this.exportReport(data.reportId, 'excel');
-  },
-
-  async exportSurchargeReport(data: { reportId: string }, _filters: unknown): Promise<string> {
     return this.exportReport(data.reportId, 'csv');
   },
 

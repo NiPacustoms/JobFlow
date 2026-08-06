@@ -680,19 +680,67 @@ export const timesService = {
     }
   },
 
-  // Export times
-  async exportTimes(format: 'pdf' | 'excel' | 'csv'): Promise<string> {
-    try {
-      // Generate export file
-      const fileUrl = `/times-export.${format}`;
-      
-      // File generation
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      return fileUrl;
-    } catch (error) {
-      throw error;
+  /**
+   * Exportiert die Stempeluhr-Einträge des Mitarbeiters.
+   *
+   * PDF: gebrandetes Dokument über die zentrale PDF-Erzeugung (Storage-URL,
+   * wird vom Aufrufer geöffnet). CSV/Excel: lokale Datei über den
+   * ExportService – der Download startet dort direkt, zurück kommt der
+   * Dateiname. (Der frühere Stand lieferte den Pfad einer nicht
+   * existierenden Datei und täuschte damit einen Export vor.)
+   */
+  async exportTimes(
+    format: 'pdf' | 'excel' | 'csv',
+    userId?: string
+  ): Promise<{ art: 'url' | 'datei'; wert: string }> {
+    if (!userId) {
+      throw new Error('Für den Export wird die Benutzer-ID benötigt.');
     }
+
+    const eintraege = await this.getByUserId(userId);
+    if (eintraege.length === 0) {
+      throw new Error('Keine Zeiteinträge zum Exportieren vorhanden.');
+    }
+
+    if (format === 'pdf') {
+      const { documentGenerationService } = await import('./documentGeneration');
+      const dokument = await documentGenerationService.generateDocument({
+        type: 'time-entries-report',
+        userId,
+        timeEntries: eintraege.map(e => ({
+          date: e.date,
+          type: e.type,
+          startTime: e.startTime,
+          endTime: e.endTime,
+          hours: e.hours,
+          status: e.status,
+          reason: e.reason,
+        })),
+      });
+      return { art: 'url', wert: dokument.url };
+    }
+
+    const { ExportService } = await import('./exportService');
+    const artLabel: Record<TimeEntry['type'], string> = {
+      work: 'Arbeit',
+      break: 'Pause',
+      sick: 'Krank',
+    };
+    const zeilen = eintraege.map(e => ({
+      Datum: e.date,
+      Art: artLabel[e.type] ?? e.type,
+      Start: e.startTime || '',
+      Ende: e.endTime || '',
+      Stunden: e.hours,
+      Status: e.status,
+      Anmerkung: e.reason || '',
+    }));
+    const dateiname = `meine-zeiten-${new Date().toISOString().split('T')[0]}`;
+    const datei =
+      format === 'excel'
+        ? await ExportService.exportToExcel(zeilen, { filename: `${dateiname}.xls` })
+        : await ExportService.exportToCSV(zeilen, { filename: `${dateiname}.csv` });
+    return { art: 'datei', wert: datei };
   },
 
   // Get time statistics

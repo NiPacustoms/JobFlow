@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyIdToken, adminDb, adminAuth } from '@/lib/server/firebaseAdmin';
+import { ChunkedBatch } from '@/lib/server/firestoreBatch';
 import { checkRateLimit } from '@/lib/middleware/rateLimit';
 import { logger } from '@/lib/logging';
 import { createAuthErrorResponse, createErrorResponse, createValidationErrorResponse } from '@/lib/errors/apiErrorResponse';
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
       .where('userId', '==', userId)
       .get();
 
-    const batch = adminDb.batch();
+    const batch = new ChunkedBatch(adminDb);
     let deleteCount = 0;
     let anonymizeCount = 0;
 
@@ -121,7 +122,7 @@ export async function POST(req: NextRequest) {
     // User-Dokument anonymisieren (nicht löschen, da Referenzen bestehen können)
     const userDoc = await adminDb.collection('users').doc(userId);
     batch.update(userDoc, {
-      email: `[ANONYMISIERT-${userId.substring(0, 8)}]@deleted.local`,
+      email: `anonymisiert-${userId.substring(0, 8)}@deleted.local`,
       displayName: '[ANONYMISIERT]',
       firstName: '[ANONYMISIERT]',
       lastName: '[ANONYMISIERT]',
@@ -132,13 +133,13 @@ export async function POST(req: NextRequest) {
       anonymized: true,
     });
 
-    // Batch ausführen
+    // Batch ausführen (in Blöcken zu je 450 Operationen – 500 ist das harte Limit)
     await batch.commit();
 
     // 3. Firebase Auth User löschen/anonymisieren
     try {
       await adminAuth.updateUser(userId, {
-        email: `[ANONYMISIERT-${userId.substring(0, 8)}]@deleted.local`,
+        email: `anonymisiert-${userId.substring(0, 8)}@deleted.local`,
         displayName: '[ANONYMISIERT]',
         disabled: true,
       });

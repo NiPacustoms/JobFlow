@@ -1,5 +1,5 @@
 // Service Worker für Schichtklar PWA
-const VERSION = 'v4';
+const VERSION = 'v5';
 const STATIC_CACHE = `schichtklar-static-${VERSION}`;
 const RUNTIME_CACHE = `schichtklar-runtime-${VERSION}`;
 
@@ -104,8 +104,12 @@ self.addEventListener('activate', (event) => {
 const handleNavigationRequest = async (request) => {
   try {
     const response = await fetch(request);
-    const cache = await caches.open(STATIC_CACHE);
-    cache.put(request, response.clone());
+    // Nur erfolgreiche Antworten cachen – sonst landen 404/500-Seiten im
+    // Static-Cache und werden später als "Offline-Version" ausgeliefert.
+    if (response && response.ok) {
+      const cache = await caches.open(STATIC_CACHE);
+      cache.put(request, response.clone());
+    }
     return response;
   } catch (error) {
     const cache = await caches.open(STATIC_CACHE);
@@ -129,6 +133,13 @@ self.addEventListener('fetch', (event) => {
   }
 
   const requestUrl = new URL(request.url);
+
+  // API-Requests NIEMALS cachen: staleWhileRevalidate hätte nutzerbezogene
+  // Antworten (Stunden, Nachweise, Personaldaten) im Runtime-Cache abgelegt und
+  // sie später – auch nach Rollen-/Nutzerwechsel – erneut ausgeliefert.
+  if (requestUrl.origin === self.location.origin && requestUrl.pathname.startsWith('/api/')) {
+    return; // direkt ans Netz, kein Service-Worker-Handling
+  }
 
   // In Development: Next.js Assets nicht abfangen, einfach durchlassen
   const isDevelopment = self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1';

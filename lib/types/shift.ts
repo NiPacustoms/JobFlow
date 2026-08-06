@@ -7,6 +7,8 @@ export interface Shift {
   facilityId: string;
   stationId: string;
   date: Date;
+  /** Enddatum (Folgetag) bei Overnight-Schichten */
+  endDate?: Date;
   startTime: string;
   endTime: string;
   type: 'Frühdienst' | 'Spätdienst' | 'Nachtdienst' | 'On-call';
@@ -20,10 +22,6 @@ export interface Shift {
   tz: string;
   notes?: string;
   createdBy: string;
-  surchargeNight?: boolean;
-  surchargeWeekend?: boolean;
-  surchargeHoliday?: boolean;
-  surchargeOnCall?: boolean;
   companyId?: string;
   color?: string;
 }

@@ -46,9 +46,20 @@ export const createWithMatching = functions.https.onCall(async (data: CreateWith
 
   // Mandantenisolation: Die übergebene companyId muss der des aufrufenden Admins
   // entsprechen (kein Anlegen in fremden Mandanten bei Direktaufruf der Function).
+  // Fehlt der Claim (noch nicht gesynct), wird die companyId aus dem User-Dokument
+  // nachgeladen. Ein fehlender Claim darf die Prüfung NICHT überspringen – sonst
+  // könnte ein Admin per Direktaufruf Einsätze in einem fremden Mandanten anlegen.
   const callerToken = context.auth.token as { companyId?: string; claims?: { companyId?: string } };
-  const callerCompanyId = callerToken.companyId || callerToken.claims?.companyId;
-  if (callerCompanyId && companyId !== callerCompanyId) {
+  let callerCompanyId = callerToken.companyId || callerToken.claims?.companyId;
+  if (!callerCompanyId) {
+    const callerDoc = await db.collection('users').doc(context.auth.uid).get();
+    const docCompanyId = callerDoc.data()?.companyId;
+    callerCompanyId = typeof docCompanyId === 'string' && docCompanyId ? docCompanyId : undefined;
+  }
+  if (!callerCompanyId) {
+    throw new functions.https.HttpsError('permission-denied', 'companyId des Aufrufers unbekannt');
+  }
+  if (companyId !== callerCompanyId) {
     throw new functions.https.HttpsError('permission-denied', 'companyId mismatch');
   }
 

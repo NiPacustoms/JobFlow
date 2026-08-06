@@ -4,7 +4,7 @@ vi.mock('@/lib/firebase', () => ({ db: {}, getDb: () => ({}), functions: {} }));
 vi.mock('@/lib/utils/companyId', () => ({ getCompanyIdFromAuth: vi.fn() }));
 vi.mock('../../offlineQueue', () => ({ offlineQueueService: { addToQueue: vi.fn() } }));
 
-import { computeNetHours } from '../write';
+import { computeNetHours } from '../computeNetHours';
 
 describe('computeNetHours', () => {
   it('berechnet normale Schicht mit Pause', () => {

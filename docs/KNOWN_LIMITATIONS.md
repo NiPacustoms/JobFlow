@@ -8,11 +8,11 @@ Ehrliche Auflistung aller bekannten Einschränkungen, offenen Entscheidungen und
 
 | # | Thema | Details |
 |---|---|---|
-| A1 | **Impressums-/Legal-Daten setzen** | `NEXT_PUBLIC_COMPANY_*` mit echten Daten belegen. Der Produktions-Guard `validateLegalConfig()` blockiert den Build sonst bewusst. |
-| A2 | **Finale Markenassets** | `public/logo.svg`, `public/logo-default.png`, `public/icons/*` durch finale Schichtklar-Grafiken ersetzen (gleiche Dateinamen → keine Code-Änderung). |
+| A1 | ~~Impressums-/Legal-Daten setzen~~ **ENTSCHIEDEN: Rechtstexte liefert die Hauptseite** | Eigentümer-Entscheidung (21.07.2026): Die App wird in eine bestehende Seite eingebunden, die Impressum/AGB/Datenschutz bereits führt. Der Build-Blocker `validateLegalConfig()` ist zu einer Warnung entschärft. Optional: `NEXT_PUBLIC_IMPRESSUM_URL` / `NEXT_PUBLIC_DATENSCHUTZ_URL` / `NEXT_PUBLIC_AGB_URL` auf die Hauptseite zeigen lassen (sonst interne Platzhalter-Seiten) und `NEXT_PUBLIC_COMPANY_*` für Dokument-Briefköpfe setzen. |
+| A2 | ~~Finale Markenassets~~ **ERLEDIGT (verifiziert 21.07.2026)** | Logos sind final und korrekt verdrahtet: Die App nutzt das Schichtklar-Logo (`public/logo-default.png` + Dark-Variante, `logo.svg`, Favicons/PWA-Icons), die generierten Dokumente nutzen bevorzugt das AufAbruf-Firmenlogo (`public/company-logo.png`, Fallback Schichtklar) über `brandedPdf.loadLogoDataUrl()`. |
 | A3 | **Produktions-Domain & CORS** | Domain + Support-E-Mail festlegen; `scripts/storage-cors.json` (Platzhalter `your-production-domain.example`) auf echte Origin setzen und via `npm run storage:cors` anwenden. |
 | A4 | **AVV mit Google Cloud** | Auftragsverarbeitungsvertrag abschließen; Region `europe-west1` ist bereits gesetzt. |
-| A5 | **GitHub Actions reaktivieren** | Repo-weit seit 31.05.2026 keine Workflow-Runs (Settings → Actions / Billing prüfen). Ohne CI kein automatisches Sicherheitsnetz. |
+| A5 | ~~GitHub Actions reaktivieren~~ **ENTSCHIEDEN: keine GitHub Actions** | Eigentümer-Entscheidung (21.07.2026): Es werden keine GitHub Actions genutzt; die toten Workflow-Dateien wurden entfernt. Qualitätssicherung läuft lokal: `npm run validate` (Lint + Typecheck) bzw. `npm run ci:verify` vor jedem Deploy; `npm run deploy` baut ohnehin frisch. |
 | A6 | ~~Blaze-Plan für Storage & Functions~~ **ERLEDIGT** | Blaze aktiviert (10.07.2026). Storage-Bucket (`europe-west1`) provisioniert, Storage-Rules deployt, alle **37 Cloud Functions** inkl. Scheduler-Jobs live. Vollständiger Stand: `INFRASTRUCTURE_RENAMING.md` §1a. |
 
 ## B. Vor Produktivbetrieb empfohlen

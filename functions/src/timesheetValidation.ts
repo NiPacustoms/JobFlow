@@ -9,6 +9,8 @@ interface Timesheet {
   id: string;
   userId: string;
   shiftId?: string;
+  /** Schichtdatum (Firestore-Timestamp | ISO-String | Date) */
+  date?: unknown;
   startTime: string;
   endTime?: string;
   breakStart?: string;
@@ -21,8 +23,23 @@ interface Timesheet {
     longitude: number;
     address?: string;
   };
-  createdAt: string;
-  updatedAt: string;
+  createdAt: unknown;
+  updatedAt: unknown;
+}
+
+/** Firestore-Wert (Timestamp | Date | String) robust zu Date normalisieren. */
+function toValidDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === 'object' && 'toDate' in (value as Record<string, unknown>)) {
+    const d = (value as { toDate: () => Date }).toDate();
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
 }
 
 interface ValidationResult {
@@ -159,8 +176,12 @@ export const updateTimesheetValidation = onDocumentUpdated(
 );
 
 async function performTimesheetValidation(timesheet: Timesheet): Promise<ValidationResult> {
-  // Nutze die gemeinsame Validierungslogik
-  const timesheetDate = timesheet.createdAt ? new Date(timesheet.createdAt) : new Date();
+  // Nutze die gemeinsame Validierungslogik. Basis ist das SCHICHTDATUM
+  // (timesheet.date); createdAt (Erfassungszeitpunkt) nur als Fallback.
+  // Früher wurde new Date(Timestamp-Objekt) gerechnet → Invalid Date, und
+  // die komplette Draft-Validierung lief mit NaN-Zeiten ins Leere.
+  const timesheetDate =
+    toValidDate(timesheet.date) ?? toValidDate(timesheet.createdAt) ?? new Date();
   
   const validationData: TimesheetValidationData = {
     id: timesheet.id,

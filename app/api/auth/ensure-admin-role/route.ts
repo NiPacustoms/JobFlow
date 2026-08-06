@@ -11,6 +11,7 @@ import {
 } from '@/lib/errors';
 import { SINGLE_COMPANY_ID } from '@/lib/constants/company';
 import { FieldValue } from 'firebase-admin/firestore';
+import { checkRateLimit } from '@/lib/middleware/rateLimit';
 
 export const runtime = 'nodejs';
 
@@ -25,6 +26,10 @@ const DEFAULT_ADMIN_BOOTSTRAP_EMAIL = 'admin@schichtklar.test';
 export async function POST(req: NextRequest) {
   try {
     const route = '/api/auth/ensure-admin-role';
+    const rateLimitResponse = checkRateLimit(req);
+    if (rateLimitResponse) {
+      return rateLimitResponse;
+    }
     if (!adminAuth || !adminDb) {
       return createErrorResponse(
         createAppError(

@@ -79,17 +79,8 @@ export const submitTimesheet = functions.https.onCall(async (data, context) => {
       const totalHours = (totalMinutes - (breakMinutes || 0)) / 60;
       const roundedTotalHours = Math.round(totalHours * 100) / 100;
 
-      // Stunden-Breakdown (Nacht/Wochenende/Feiertag/Überstunden) + Zuschlag.
-      // Stundenlohn aus dem User-Dokument; ohne Lohn bleibt surchargeAmount 0.
-      let hourlyRate = 0;
-      try {
-        const userSnap = await db.collection('users').doc(timesheet.userId).get();
-        const rateRaw = userSnap.exists ? userSnap.data()?.hourlyRate : 0;
-        hourlyRate = typeof rateRaw === 'number' && rateRaw > 0 ? rateRaw : 0;
-      } catch {
-        hourlyRate = 0;
-      }
-      const breakdown = computeWorkHoursBreakdown(start, end, breakMinutes || 0, hourlyRate);
+      // Stunden-Breakdown (Nacht/Wochenende/Feiertag/Überstunden)
+      const breakdown = computeWorkHoursBreakdown(start, end, breakMinutes || 0);
 
       // 5. VOLLSTÄNDIGE ARBZG-VALIDIERUNG (inkl. Ruhezeiten, 45-Minuten-Pause, etc.)
       const validationData: TimesheetValidationData = {
@@ -133,7 +124,6 @@ export const submitTimesheet = functions.https.onCall(async (data, context) => {
         weekendHours: breakdown.weekendHours,
         holidayHours: breakdown.holidayHours,
         overtimeHours: breakdown.overtimeHours,
-        surchargeAmount: breakdown.surchargeAmount,
         status: 'submitted',
         submittedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),

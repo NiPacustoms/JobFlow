@@ -14,6 +14,10 @@ import {
   drawCompanyFooter,
   drawFooters,
   drawLetterhead,
+  drawStatTiles,
+  formatDateDE,
+  formatDateTimeDE,
+  formatHoursDE,
   kvLine,
   sectionTitle,
   signatureLine,
@@ -49,7 +53,7 @@ function buildCompanyFooterInfo(): CompanyFooterInfo {
   };
 }
 
-export type DocumentType = 
+export type DocumentType =
   | 'timesheet-report'      // Zeiterfassungsbericht
   | 'assignment-confirmation' // Einsatzbestätigung
   | 'shift-summary'         // Schichtzusammenfassung
@@ -57,7 +61,19 @@ export type DocumentType =
   | 'custom-report'          // Benutzerdefinierter Bericht
   | 'assignment-notification' // Einsatzmitteilung nach § 11 Absatz 2 Satz 4 AÜG
   | 'assignment-signatures'   // Assignment mit allen Signaturen
-  | 'admin-report';          // Admin-Bericht (High-End-PDF mit Firmenlogo)
+  | 'admin-report'           // Admin-Bericht (High-End-PDF mit Firmenlogo)
+  | 'time-entries-report';   // Stempeluhr-Einträge des Mitarbeiters (Zeiten-Seite)
+
+/** Ein Stempeluhr-Eintrag für den Zeiten-Export (aus lib/services/times.ts). */
+export interface TimeEntryExportRow {
+  date: Date;
+  type: 'work' | 'break' | 'sick';
+  startTime?: string;
+  endTime?: string;
+  hours: number;
+  status: string;
+  reason?: string;
+}
 
 export interface DocumentGenerationOptions {
   type: DocumentType;
@@ -71,6 +87,8 @@ export interface DocumentGenerationOptions {
   timesheetIds?: string[];
   includeSignatures?: boolean;
   customData?: Record<string, unknown>;
+  /** Für den Zeiten-Export: bereits geladene Stempeluhr-Einträge */
+  timeEntries?: TimeEntryExportRow[];
   /** Für Admin-Bericht-Export: Logo, Firmenname, Titel, Zeitraum */
   adminReportData?: {
     reportTitle: string;
@@ -150,6 +168,9 @@ class DocumentGenerationService {
       case 'admin-report':
         pdfBlob = await this.generateAdminReport(doc, autoTable, options);
         break;
+      case 'time-entries-report':
+        pdfBlob = await this.generateTimeEntriesReport(doc, autoTable, options);
+        break;
       default:
         throw new Error(`Unbekannter Dokumenttyp: ${options.type}`);
     }
@@ -203,7 +224,7 @@ class DocumentGenerationService {
     let y = await drawLetterhead(doc, {
       title: 'Zeiterfassungsbericht',
       subtitle: options.dateRange
-        ? `Zeitraum: ${options.dateRange.start.toLocaleDateString('de-DE')} – ${options.dateRange.end.toLocaleDateString('de-DE')}`
+        ? `Zeitraum: ${formatDateDE(options.dateRange.start)} – ${formatDateDE(options.dateRange.end)}`
         : undefined,
     });
 
@@ -231,11 +252,11 @@ class DocumentGenerationService {
     // Erstelle Tabellendaten
     const tableData = timesheets.length > 0
       ? timesheets.map(ts => [
-          ts.date ? new Date(ts.date).toLocaleDateString('de-DE') : '-',
-          ts.startTime || '-',
-          ts.endTime || '-',
+          formatDateDE(ts.date),
+          ts.startTime || '–',
+          ts.endTime || '–',
           `${ts.breakMinutes || 0} Min`,
-          `${ts.totalHours?.toFixed(2) || '0,00'}`,
+          formatHoursDE(ts.totalHours, false),
           this.getStatusLabel(ts.status || 'pending'),
         ])
       : [
@@ -276,8 +297,79 @@ class DocumentGenerationService {
       y = finalY + 15;
       
       y = sectionTitle(doc, y, 'Zusammenfassung');
-      y = kvLine(doc, y, 'Gesamtstunden', `${totalHours.toFixed(2)} h`);
-      y = kvLine(doc, y, 'Genehmigte Stunden', `${approvedHours.toFixed(2)} h`);
+      y = drawStatTiles(doc, y, [
+        { label: 'Gesamtstunden', value: formatHoursDE(totalHours) },
+        { label: 'Genehmigte Stunden', value: formatHoursDE(approvedHours) },
+      ]);
+    }
+
+    drawFooters(doc);
+    return doc.output('blob');
+  }
+
+  /**
+   * Generiert den Zeiten-Export des Mitarbeiters (Stempeluhr-Einträge).
+   * Die Einträge werden vom Aufrufer geladen und übergeben – so bleibt die
+   * PDF-Erzeugung frei von einem Import des times-Service.
+   */
+  private async generateTimeEntriesReport(
+    doc: any,
+    autoTable: any,
+    options: DocumentGenerationOptions
+  ): Promise<Blob> {
+    const eintraege = options.timeEntries ?? [];
+    const sortiert = [...eintraege].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    let y = await drawLetterhead(doc, {
+      title: 'Meine Zeiten',
+      subtitle:
+        sortiert.length > 0
+          ? `Zeitraum: ${formatDateDE(sortiert[0].date)} – ${formatDateDE(sortiert[sortiert.length - 1].date)}`
+          : undefined,
+    });
+
+    const artLabel: Record<TimeEntryExportRow['type'], string> = {
+      work: 'Arbeit',
+      break: 'Pause',
+      sick: 'Krank',
+    };
+
+    const tableData =
+      sortiert.length > 0
+        ? sortiert.map(e => [
+            formatDateDE(e.date),
+            artLabel[e.type] ?? e.type,
+            e.startTime || '–',
+            e.endTime || '–',
+            formatHoursDE(e.hours, false),
+            this.getStatusLabel(e.status),
+            e.reason || '',
+          ])
+        : [['Keine Zeiteinträge vorhanden', '', '', '', '', '', '']];
+
+    autoTable(doc, {
+      head: [['Datum', 'Art', 'Start', 'Ende', 'Stunden', 'Status', 'Anmerkung']],
+      body: tableData,
+      startY: y,
+      ...brandedTableOptions([4]),
+    });
+
+    if (sortiert.length > 0) {
+      const arbeitsstunden = sortiert
+        .filter(e => e.type === 'work')
+        .reduce((sum, e) => sum + (e.hours || 0), 0);
+      const krankStunden = sortiert
+        .filter(e => e.type === 'sick')
+        .reduce((sum, e) => sum + (e.hours || 0), 0);
+
+      const finalY = (doc as any).lastAutoTable?.finalY || y + sortiert.length * 8 + 20;
+      y = finalY + 15;
+      y = sectionTitle(doc, y, 'Zusammenfassung');
+      y = drawStatTiles(doc, y, [
+        { label: 'Arbeitsstunden', value: formatHoursDE(arbeitsstunden) },
+        { label: 'Krankheitsstunden', value: formatHoursDE(krankStunden) },
+        { label: 'Einträge', value: String(sortiert.length) },
+      ]);
     }
 
     drawFooters(doc);
@@ -328,12 +420,12 @@ class DocumentGenerationService {
 
     const assignmentData = [
       ['Einsatz-ID', options.assignmentId || '-'],
-      ['Datum', assignment?.assignedAt ? new Date(assignment.assignedAt).toLocaleDateString('de-DE') : new Date().toLocaleDateString('de-DE')],
+      ['Datum', formatDateDE(assignment?.assignedAt ? new Date(assignment.assignedAt) : new Date())],
       ['Status', this.getAssignmentStatusLabel(assignment?.status || 'pending')],
       ['Einrichtung', facility?.name || shift?.facilityId || '-'],
       ['Schicht', shift ? `${shift.startTime} - ${shift.endTime}` : '-'],
       ['Schichttyp', 'Schicht'],
-      ['Abgeschlossen am', assignment?.completedAt ? new Date(assignment.completedAt).toLocaleDateString('de-DE') : '-'],
+      ['Abgeschlossen am', assignment?.completedAt ? formatDateDE(new Date(assignment.completedAt)) : '–'],
     ];
 
     y = sectionTitle(doc, y, 'Einsatzdaten');
@@ -391,7 +483,7 @@ class DocumentGenerationService {
     const reportDate = options.dateRange?.start || new Date();
     const y = await drawLetterhead(doc, {
       title: 'Schichtzusammenfassung',
-      subtitle: `Datum: ${reportDate.toLocaleDateString('de-DE')}`,
+      subtitle: `Datum: ${formatDateDE(reportDate)}`,
     });
 
     // Lade Timesheet-Daten für den Tag
@@ -418,9 +510,9 @@ class DocumentGenerationService {
     // Erstelle Tabellendaten
     const tableData = timesheets.length > 0
       ? timesheets.map(ts => [
-          ts.date ? new Date(ts.date).toLocaleDateString('de-DE') : '-',
-          `${ts.startTime || '-'} - ${ts.endTime || '-'}`,
-          `${ts.totalHours?.toFixed(2) || '0,00'}`,
+          formatDateDE(ts.date),
+          `${ts.startTime || '–'} – ${ts.endTime || '–'}`,
+          formatHoursDE(ts.totalHours, false),
           this.getStatusLabel(ts.status || 'pending'),
         ])
       : [
@@ -478,28 +570,21 @@ class DocumentGenerationService {
     const nightHours = timesheets.reduce((sum, ts) => sum + (ts.nightHours || 0), 0);
     const assignmentCount = timesheets.length;
 
-    // Statistiken
-    const stats = [
-      ['Gesamtstunden', totalHours.toFixed(2)],
-      ['Einsätze', String(assignmentCount)],
-      ['Überstunden', overtimeHours.toFixed(2)],
-      ['Nachtstunden', nightHours.toFixed(2)],
-    ];
-
     y = sectionTitle(doc, y, 'Kennzahlen');
-    stats.forEach(([label, value]) => {
-      y = kvLine(doc, y, label, value);
-    });
-
-    y += 6;
+    y = drawStatTiles(doc, y, [
+      { label: 'Gesamtstunden', value: formatHoursDE(totalHours) },
+      { label: 'Einsätze', value: String(assignmentCount) },
+      { label: 'Überstunden', value: formatHoursDE(overtimeHours) },
+      { label: 'Nachtstunden', value: formatHoursDE(nightHours) },
+    ]);
     
     // Detaillierte Tabelle mit echten Daten
     const tableData = timesheets.length > 0
       ? timesheets.map(ts => [
-          ts.date ? new Date(ts.date).toLocaleDateString('de-DE') : '-',
-          `${ts.totalHours?.toFixed(2) || '0,00'}`,
+          formatDateDE(ts.date),
+          formatHoursDE(ts.totalHours, false),
           '1', // Ein Einsatz pro Timesheet
-          `${ts.totalHours?.toFixed(2) || '0,00'}`,
+          formatHoursDE(ts.totalHours, false),
         ])
       : [
           ['Keine Daten verfügbar', '', '', ''],
@@ -674,7 +759,7 @@ class DocumentGenerationService {
     const periodLabel = this.getReportPeriodLabel(data.period);
     doc.text(`Zeitraum: ${periodLabel}`, margin, y);
     y += 8;
-    doc.text(`Erstellt am: ${new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`, margin, y);
+    doc.text(`Erstellt am: ${formatDateTimeDE(new Date())}`, margin, y);
     y += 18;
 
     // Kurzer Hinweis (professionell)
@@ -689,7 +774,7 @@ class DocumentGenerationService {
     doc.setFontSize(9);
     doc.setTextColor(140, 140, 140);
     doc.text(
-      `${companyName} · ${new Date().toLocaleDateString('de-DE')}`,
+      `${companyName} · ${formatDateDE(new Date())}`,
       margin,
       pageHeight - 12
     );
@@ -716,7 +801,6 @@ class DocumentGenerationService {
   private getReportTypeLabel(reportType: string): string {
     const map: Record<string, string> = {
       timesheet: 'Zeitkonten',
-      allowances: 'Zuschläge',
       shifts: 'Schichten',
       summary: 'Zusammenfassung / Mitarbeiter-Statistik',
     };
@@ -854,18 +938,44 @@ class DocumentGenerationService {
     y += 6;
     const sigLineY = y + 16;
     if (data.signatureDataUrl) {
-      try {
-        const img = new Image();
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve();
-          img.onerror = reject;
+      const maxWidth = 60;
+      const maxHeight = 22;
+      // Seitenverhältnis ermitteln – mit Zeitgrenze. Feuert weder onload noch
+      // onerror (defekte Data-URL, bestimmte WebView-Umgebungen), würde die
+      // PDF-Erzeugung sonst UNBEGRENZT hängen; der Mitarbeiter wartet dann
+      // ewig auf seine Bestätigung.
+      const masse = await new Promise<{ w: number; h: number } | null>(resolve => {
+        let erledigt = false;
+        const fertig = (wert: { w: number; h: number } | null) => {
+          if (erledigt) return;
+          erledigt = true;
+          resolve(wert);
+        };
+        const timer = setTimeout(() => fertig(null), 3000);
+        try {
+          const img = new Image();
+          img.onload = () => {
+            clearTimeout(timer);
+            fertig(img.width && img.height ? { w: img.width, h: img.height } : null);
+          };
+          img.onerror = () => {
+            clearTimeout(timer);
+            fertig(null);
+          };
           img.src = data.signatureDataUrl!;
-        });
-        const maxWidth = 60;
-        const maxHeight = 22;
-        const ratio = Math.min(maxWidth / img.width, maxHeight / img.height);
-        const imgW = img.width * ratio;
-        const imgH = img.height * ratio;
+        } catch {
+          clearTimeout(timer);
+          fertig(null);
+        }
+      });
+
+      // Auch ohne ermittelte Maße wird die Unterschrift eingebettet (mit
+      // Standardgröße) – sie darf aus einem unterschriebenen Dokument nicht
+      // stillschweigend verschwinden.
+      const ratio = masse ? Math.min(maxWidth / masse.w, maxHeight / masse.h) : 1;
+      const imgW = masse ? masse.w * ratio : maxWidth;
+      const imgH = masse ? masse.h * ratio : maxHeight;
+      try {
         doc.addImage(data.signatureDataUrl, 'PNG', m, sigLineY - imgH - 1, imgW, imgH);
       } catch (error) {
         logger.error('Fehler beim Einfügen der Unterschrift', error instanceof Error ? error : new Error(String(error)));
@@ -913,9 +1023,13 @@ class DocumentGenerationService {
     const employee = await userService.getById(assignment.userId);
 
     const margin = PDF_MARGIN;
+    const shiftDateForTitle = shift.date ? new Date(shift.date as unknown as string) : null;
     let y = await drawLetterhead(doc, {
       title: 'Zeiterfassung mit Unterschriften',
-      subtitle: `Einsatz ${assignment.id}`,
+      subtitle: shiftDateForTitle
+        ? `Einsatz vom ${formatDateDE(shiftDateForTitle)}${facility ? ` · ${facility.name}` : ''}`
+        : `Einsatz ${assignment.id}`,
+      metaLines: [`Erstellt am ${formatDateDE(new Date())}`, `Referenz ${assignment.id}`],
     });
 
     y = sectionTitle(doc, y, 'Einsatzinformationen');
@@ -927,7 +1041,7 @@ class DocumentGenerationService {
     }
     if (shift) {
       const shiftDate = typeof shift.date === 'string' ? new Date(shift.date) : (shift.date as Date);
-      y = kvLine(doc, y, 'Datum', shiftDate.toLocaleDateString('de-DE'));
+      y = kvLine(doc, y, 'Datum', formatDateDE(shiftDate));
       y = kvLine(doc, y, 'Zeiten', `${shift.startTime} – ${shift.endTime}`);
     }
 
@@ -970,7 +1084,7 @@ class DocumentGenerationService {
         if (assignment.employeeSignedAt) {
           doc.setFontSize(10);
           const signedAt = assignment.employeeSignedAt instanceof Date ? assignment.employeeSignedAt : new Date(assignment.employeeSignedAt);
-          doc.text(`Unterschrieben am: ${signedAt.toLocaleDateString('de-DE')} ${signedAt.toLocaleTimeString('de-DE')}`, margin, y);
+          doc.text(`Unterschrieben am: ${formatDateTimeDE(signedAt)}`, margin, y);
           y += 6;
         }
         doc.setFontSize(12);
@@ -1042,7 +1156,7 @@ class DocumentGenerationService {
 
           doc.setFontSize(10);
           const signedAt = sig.signedAt instanceof Date ? sig.signedAt : new Date(sig.signedAt);
-          doc.text(`Unterschrieben am: ${signedAt.toLocaleDateString('de-DE')} ${signedAt.toLocaleTimeString('de-DE')}`, margin, y);
+          doc.text(`Unterschrieben am: ${formatDateTimeDE(signedAt)}`, margin, y);
           y += 8;
           doc.setFontSize(12);
         } catch (error) {
@@ -1063,6 +1177,28 @@ class DocumentGenerationService {
 
       for (const timesheetId of options.timesheetIds) {
         const timesheet = await timesheetService.getById(timesheetId);
+        // Ohne Einrichtungssignatur: Vermerk „ausstehend" statt stiller Auslassung
+        // (Nachweis wird bewusst schon nach der Mitarbeiter-Signatur versendet).
+        if (timesheet && !timesheet.facilitySignatureUrl) {
+          if (y > 250) {
+            doc.addPage();
+            y = 20;
+          }
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(11);
+          const tsDatePending = timesheet.date instanceof Date ? timesheet.date : new Date(timesheet.date);
+          doc.text(`Datum: ${formatDateDE(tsDatePending)}`, margin, y);
+          y += 6;
+          doc.text(`Zeiten: ${timesheet.startTime} - ${timesheet.endTime}`, margin, y);
+          y += 6;
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(180, 120, 0);
+          doc.text('Einrichtungssignatur: ausstehend', margin, y);
+          doc.setTextColor(0, 0, 0);
+          doc.setFont('helvetica', 'normal');
+          y += 14;
+          continue;
+        }
         if (timesheet && timesheet.facilitySignatureUrl) {
           // Prüfe ob neue Seite benötigt wird
           if (y > 250) {
@@ -1073,7 +1209,7 @@ class DocumentGenerationService {
           doc.setFont('helvetica', 'normal');
           doc.setFontSize(11);
           const tsDate = timesheet.date instanceof Date ? timesheet.date : new Date(timesheet.date);
-          doc.text(`Datum: ${tsDate.toLocaleDateString('de-DE')}`, margin, y);
+          doc.text(`Datum: ${formatDateDE(tsDate)}`, margin, y);
           y += 6;
           doc.text(`Zeiten: ${timesheet.startTime} - ${timesheet.endTime}`, margin, y);
           y += 6;
@@ -1116,7 +1252,7 @@ class DocumentGenerationService {
             if (timesheet.facilitySignedAt) {
               doc.setFontSize(10);
               const facilitySignedAt = timesheet.facilitySignedAt instanceof Date ? timesheet.facilitySignedAt : new Date(timesheet.facilitySignedAt);
-              doc.text(`Unterschrieben am: ${facilitySignedAt.toLocaleDateString('de-DE')} ${facilitySignedAt.toLocaleTimeString('de-DE')}`, margin, y);
+              doc.text(`Unterschrieben am: ${formatDateTimeDE(facilitySignedAt)}`, margin, y);
               y += 8;
             }
             doc.setFontSize(12);
@@ -1135,7 +1271,7 @@ class DocumentGenerationService {
     y += 10;
     doc.setFontSize(10);
     doc.setFont('helvetica', 'italic');
-    doc.text(`Erstellt am: ${new Date().toLocaleDateString('de-DE')} ${new Date().toLocaleTimeString('de-DE')}`, margin, y);
+    doc.text(`Erstellt am: ${formatDateTimeDE(new Date())}`, margin, y);
 
     return doc.output('blob');
   }
@@ -1154,6 +1290,7 @@ class DocumentGenerationService {
       'assignment-notification': 'Einsatzmitteilung',
       'assignment-signatures': 'Zeiterfassung_Unterschriften',
       'admin-report': 'Bericht',
+      'time-entries-report': 'Meine_Zeiten',
     };
     
     const typeName = typeMap[options.type] || 'Dokument';

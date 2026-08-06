@@ -82,6 +82,7 @@ export default function AssignmentFormPage() {
     formState: { errors, isSubmitting },
     reset,
     setValue,
+    getValues,
   } = useForm<AssignmentFormValues>({
     resolver: zodResolver(assignmentFormSchema),
     defaultValues: {
@@ -134,7 +135,9 @@ export default function AssignmentFormPage() {
             const pdfDoc = docs.find(d => d.notes?.includes(a.id) || d.name?.toLowerCase().includes('einsatzmitteilung'));
             if (isMounted && pdfDoc?.url) setAssignmentPdfUrl(pdfDoc.url);
           } catch {
-            if ((a as { pdfUrl?: string }).pdfUrl) setAssignmentPdfUrl((a as { pdfUrl: string }).pdfUrl);
+            const fallbackUrl = (a as { formPdfUrl?: string; pdfUrl?: string }).formPdfUrl ??
+              (a as { pdfUrl?: string }).pdfUrl;
+            if (fallbackUrl) setAssignmentPdfUrl(fallbackUrl);
           }
         }
 
@@ -172,7 +175,11 @@ export default function AssignmentFormPage() {
     const employeeName = user.displayName || user.email || 'Unbekannt';
     const facilityName = facility?.name || shift.facilityId || 'Unbekannt';
     const facilityAddress = facility?.address || '';
-    const shiftTimes = `${shift.startTime} - ${shift.endTime}`;
+    // Overnight-Schichten: Enddatum (Folgetag) mit ausweisen
+    const shiftEndDate = (shift as { endDate?: string | Date }).endDate;
+    const shiftTimes = shiftEndDate
+      ? `${shift.startTime} - ${shift.endTime} (bis ${new Date(shiftEndDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })})`
+      : `${shift.startTime} - ${shift.endTime}`;
     const currentDate = new Date();
     const shiftDate =
       typeof shift.date === 'string' ? new Date(shift.date) : (shift.date as Date);
@@ -213,10 +220,12 @@ export default function AssignmentFormPage() {
       notes: `Einsatzmitteilung für Assignment ${assignment.id}`,
     });
 
-    // PDF-URL am Assignment speichern, damit der Admin die Einsatzmitteilung unter „Einsätze“ öffnen kann
+    // PDF-URL am Assignment speichern, damit der Admin die Einsatzmitteilung unter
+    // „Einsätze“ öffnen kann. WICHTIG: eigene Felder – pdfUrl/pdfGenerated gehören
+    // zum Stundennachweis-Lauf und hätten dessen PDF-/Mailversand blockiert.
     await assignmentService.update(assignment.id, {
-      pdfUrl: pdfResult.url,
-      pdfGenerated: true,
+      formPdfUrl: pdfResult.url,
+      formPdfGeneratedAt: new Date(),
     });
 
     return pdfResult;
@@ -297,6 +306,9 @@ export default function AssignmentFormPage() {
             formStatus: 'acknowledged',
             formPlace: facility?.name || shift.facilityId || '',
             formTimes: `${shift.startTime} - ${shift.endTime}`,
+            // Anmerkungen des Mitarbeiters mitspeichern (gingen früher verloren,
+            // weil der Auto-Submit nach der Unterschrift sie nicht übernahm)
+            formNotes: getValues('notes')?.trim() || undefined,
             formSignatureName: user.displayName || undefined,
             formSignedAt: new Date(),
             status: assignment.status === 'assigned' ? 'accepted' : assignment.status,

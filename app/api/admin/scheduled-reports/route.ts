@@ -3,7 +3,7 @@ import {
   verifyIdToken,
   adminDb,
   getRoleFromToken,
-  getCompanyIdFromToken,
+  resolveCompanyId,
 } from '@/lib/server/firebaseAdmin';
 import {
   logger,
@@ -40,7 +40,14 @@ export async function GET(req: NextRequest) {
       return createAuthErrorResponse('UNAUTHORIZED', '/api/admin/scheduled-reports');
     }
 
-    const companyId = getCompanyIdFromToken(decoded) ?? '';
+    const companyId = await resolveCompanyId(decoded);
+    if (!companyId) {
+      return createValidationErrorResponse(
+        'companyId konnte nicht ermittelt werden',
+        undefined,
+        '/api/admin/scheduled-reports'
+      );
+    }
     const snapshot = await adminDb.collection(COLLECTION).where('companyId', '==', companyId).get();
 
     const items = snapshot.docs
@@ -96,7 +103,14 @@ export async function POST(req: NextRequest) {
       return createAuthErrorResponse('UNAUTHORIZED', '/api/admin/scheduled-reports');
     }
 
-    const companyId = getCompanyIdFromToken(decoded) ?? '';
+    const companyId = await resolveCompanyId(decoded);
+    if (!companyId) {
+      return createValidationErrorResponse(
+        'companyId konnte nicht ermittelt werden',
+        undefined,
+        '/api/admin/scheduled-reports'
+      );
+    }
     const body = (await req.json().catch(() => ({}))) as Partial<ScheduledReportConfigCreate>;
 
     const { type, period, format, recipientEmails, schedule } = body;
@@ -116,7 +130,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const allowedTypes = ['timesheet', 'allowances', 'shifts', 'summary'];
+    const allowedTypes = ['timesheet', 'shifts', 'summary'];
     const allowedPeriods = ['current-month', 'last-month', 'current-quarter', 'current-year'];
     const allowedFormats = ['pdf', 'excel', 'csv'];
     const allowedSchedules = ['daily', 'monthly'];

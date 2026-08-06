@@ -63,14 +63,12 @@ import {
   Description,
   Notifications,
   Backup,
-  Restore,
   Save,
   Refresh,
   Add,
   Edit,
   Delete,
   CloudUpload,
-  CloudDownload,
   Warning,
   ToggleOn,
   People,
@@ -160,7 +158,6 @@ export default function AdminSettingsPage() {
     settings,
     roles,
     documentTypes,
-    systemInfo,
     isLoading,
     error,
     updateSettings,
@@ -170,13 +167,10 @@ export default function AdminSettingsPage() {
     createDocumentType,
     updateDocumentType,
     deleteDocumentType,
-    backupData,
-    restoreData,
+    backupStatus,
     isUpdating,
     isCreating,
     isDeleting,
-    isBackingUp,
-    isRestoring,
   } = useAdminSettings();
 
   const { features, isLoading: featuresLoading } = useFeatureFlags();
@@ -186,8 +180,6 @@ export default function AdminSettingsPage() {
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   const [documentTypeDialogOpen, setDocumentTypeDialogOpen] = useState(false);
-  const [backupDialogOpen, setBackupDialogOpen] = useState(false);
-  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Role | AdminDocumentType | null>(null);
   const [roleFormName, setRoleFormName] = useState('');
   const [roleFormDescription, setRoleFormDescription] = useState('');
@@ -355,24 +347,6 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const handleBackupData = async () => {
-    try {
-      await backupData();
-      setBackupDialogOpen(false);
-    } catch (_error) {
-      // Error handling is done in the mutations
-    }
-  };
-
-  const handleRestoreData = async (file: File) => {
-    try {
-      await restoreData(file);
-      setRestoreDialogOpen(false);
-    } catch (_error) {
-      // Error handling is done in the mutations
-    }
-  };
-
   const getRoleColor = (role: string) => {
     switch (role) {
       case 'admin':
@@ -527,78 +501,6 @@ export default function AdminSettingsPage() {
           </CardContent>
         </GlassCard>
 
-        {/* System Status */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid size={{ xs: 6, sm: 6, md: 3 }}>
-            <GlassCard hover={false} sx={{ height: '100%' }}>
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Typography
-                  variant="h4"
-                  color="success.main"
-                  className="tabular-nums"
-                  sx={{ fontWeight: 700 }}
-                >
-                  {systemInfo.status}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  System-Status
-                </Typography>
-              </CardContent>
-            </GlassCard>
-          </Grid>
-          <Grid size={{ xs: 6, sm: 6, md: 3 }}>
-            <GlassCard hover={false} sx={{ height: '100%' }}>
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Typography
-                  variant="h4"
-                  color="primary"
-                  className="tabular-nums"
-                  sx={{ fontWeight: 700 }}
-                >
-                  {systemInfo.version}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Version
-                </Typography>
-              </CardContent>
-            </GlassCard>
-          </Grid>
-          <Grid size={{ xs: 6, sm: 6, md: 3 }}>
-            <GlassCard hover={false} sx={{ height: '100%' }}>
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Typography
-                  variant="h4"
-                  color="info.main"
-                  className="tabular-nums"
-                  sx={{ fontWeight: 700 }}
-                >
-                  {systemInfo.uptime}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Uptime
-                </Typography>
-              </CardContent>
-            </GlassCard>
-          </Grid>
-          <Grid size={{ xs: 6, sm: 6, md: 3 }}>
-            <GlassCard hover={false} sx={{ height: '100%' }}>
-              <CardContent sx={{ textAlign: 'center' }}>
-                <Typography
-                  variant="h4"
-                  color="warning.main"
-                  className="tabular-nums"
-                  sx={{ fontWeight: 700 }}
-                >
-                  {systemInfo.storage}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Speicher
-                </Typography>
-              </CardContent>
-            </GlassCard>
-          </Grid>
-        </Grid>
-
         {/* Actions */}
         <Box sx={{ mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <Button
@@ -608,22 +510,6 @@ export default function AdminSettingsPage() {
             disabled={isUpdating}
           >
             {isUpdating ? 'Speichere...' : 'Einstellungen speichern'}
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<CloudUpload />}
-            onClick={() => setBackupDialogOpen(true)}
-            disabled={isBackingUp}
-          >
-            {isBackingUp ? 'Backup...' : 'Backup erstellen'}
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<CloudDownload />}
-            onClick={() => setRestoreDialogOpen(true)}
-            disabled={isRestoring}
-          >
-            {isRestoring ? 'Restore...' : 'Restore'}
           </Button>
           <Button
             variant="outlined"
@@ -1142,96 +1028,69 @@ export default function AdminSettingsPage() {
 
         <TabPanel value={activeTab} index={4}>
           <Grid container spacing={3}>
-            <Grid size={{ xs: 12, md: 6 }}>
+            <Grid size={{ xs: 12, md: 8 }}>
               <Card className="glass">
                 <CardContent>
                   <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center' }}>
                     <Backup sx={{ mr: 1 }} />
-                    Backup erstellen
+                    Sicherungsstatus
                   </Typography>
 
                   <Alert severity="info" sx={{ mb: 3 }}>
-                    Erstellen Sie regelmäßig Backups Ihrer Daten, um Datenverluste zu vermeiden.
+                    Die Sicherung läuft täglich um 03:00 Uhr automatisch als
+                    Firestore-Export in den Backup-Bucket. Eine Wiederherstellung
+                    ist ein administrativer Vorgang über die Google-Cloud-Konsole
+                    (siehe Disaster-Recovery-Runbook), kein Knopf in der App.
                   </Alert>
 
                   <List>
                     <ListItem>
                       <ListItemText
-                        primary="Letztes Backup"
+                        primary="Letzte erfolgreiche Sicherung"
                         secondary={
-                          settings.lastBackup
-                            ? format(settings.lastBackup, 'dd.MM.yyyy HH:mm', { locale: de })
-                            : 'Nie'
+                          backupStatus?.lastSuccessAt
+                            ? format(backupStatus.lastSuccessAt, 'dd.MM.yyyy HH:mm', { locale: de })
+                            : 'Noch keine Sicherung protokolliert'
                         }
                       />
                     </ListItem>
                     <ListItem>
                       <ListItemText
-                        primary="Backup-Größe"
-                        secondary={settings.backupSize || 'Unbekannt'}
+                        primary="Letzter Lauf"
+                        secondary={
+                          backupStatus?.lastRunAt
+                            ? `${format(backupStatus.lastRunAt, 'dd.MM.yyyy HH:mm', { locale: de })} – ${
+                                backupStatus.lastResult === 'success' ? 'erfolgreich' : 'fehlgeschlagen'
+                              }`
+                            : 'Unbekannt'
+                        }
                       />
                     </ListItem>
-                    <ListItem>
-                      <ListItemText primary="Backup-Typ" secondary="Vollständig" />
-                    </ListItem>
-                  </List>
-
-                  <Button
-                    variant="contained"
-                    fullWidth
-                    startIcon={<CloudUpload />}
-                    onClick={() => setBackupDialogOpen(true)}
-                    disabled={isBackingUp}
-                    sx={{ mt: 2 }}
-                  >
-                    {isBackingUp ? 'Backup wird erstellt...' : 'Backup erstellen'}
-                  </Button>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 6 }}>
-              <Card className="glass">
-                <CardContent>
-                  <Typography variant="h6" sx={{ mb: 3, display: 'flex', alignItems: 'center' }}>
-                    <Restore sx={{ mr: 1 }} />
-                    Daten wiederherstellen
-                  </Typography>
-
-                  <Alert severity="warning" sx={{ mb: 3 }}>
-                    Achtung: Das Wiederherstellen von Daten überschreibt alle aktuellen Daten!
-                  </Alert>
-
-                  <List>
+                    {backupStatus?.lastResult === 'error' && backupStatus.lastError && (
+                      <ListItem>
+                        <ListItemText primary="Letzter Fehler" secondary={backupStatus.lastError} />
+                      </ListItem>
+                    )}
                     <ListItem>
                       <ListItemText
-                        primary="Verfügbare Backups"
-                        secondary={settings.availableBackups || 'Keine'}
+                        primary="Ziel"
+                        secondary={backupStatus?.outputUriPrefix || backupStatus?.bucket || 'Noch nicht konfiguriert'}
                       />
-                    </ListItem>
-                    <ListItem>
-                      <ListItemText primary="Backup-Format" secondary="JSON" />
-                    </ListItem>
-                    <ListItem>
-                      <ListItemText primary="Wiederherstellungszeit" secondary="Ca. 5-10 Minuten" />
                     </ListItem>
                   </List>
 
-                  <Button
-                    variant="outlined"
-                    fullWidth
-                    startIcon={<CloudDownload />}
-                    onClick={() => setRestoreDialogOpen(true)}
-                    disabled={isRestoring}
-                    sx={{ mt: 2 }}
-                  >
-                    {isRestoring ? 'Wiederherstellung läuft...' : 'Daten wiederherstellen'}
-                  </Button>
+                  {!backupStatus && (
+                    <Alert severity="warning" sx={{ mt: 1 }}>
+                      Es wurde noch kein Sicherungslauf protokolliert. Bitte
+                      prüfen, ob der Backup-Bucket angelegt und die geplante
+                      Function „scheduledFirestoreBackup“ deployt ist.
+                    </Alert>
+                  )}
                 </CardContent>
               </Card>
             </Grid>
           </Grid>
-        </TabPanel>
+                </TabPanel>
 
         {/* Features Tab */}
         <TabPanel value={activeTab} index={5}>
@@ -1604,80 +1463,6 @@ export default function AdminSettingsPage() {
           </DialogActions>
         </Dialog>
 
-        {/* Backup Dialog */}
-        <Dialog
-          open={backupDialogOpen}
-          onClose={() => setBackupDialogOpen(false)}
-          maxWidth="sm"
-          fullWidth
-        >
-          <DialogTitle>Backup erstellen</DialogTitle>
-          <DialogContent>
-            <Alert severity="info" sx={{ mb: 3 }}>
-              Das Backup wird alle Systemdaten, Benutzer, Schichten und Dokumente enthalten.
-            </Alert>
-
-            <List>
-              <ListItem>
-                <ListItemText primary="Backup-Typ" secondary="Vollständig" />
-              </ListItem>
-              <ListItem>
-                <ListItemText primary="Geschätzte Größe" secondary="Ca. 50-100 MB" />
-              </ListItem>
-              <ListItem>
-                <ListItemText primary="Geschätzte Zeit" secondary="Ca. 2-5 Minuten" />
-              </ListItem>
-            </List>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setBackupDialogOpen(false)}>Abbrechen</Button>
-            <Button onClick={handleBackupData} variant="contained" disabled={isBackingUp}>
-              {isBackingUp ? 'Backup wird erstellt...' : 'Backup erstellen'}
-            </Button>
-          </DialogActions>
-        </Dialog>
-
-        {/* Restore Dialog */}
-        <Dialog
-          open={restoreDialogOpen}
-          onClose={() => setRestoreDialogOpen(false)}
-          maxWidth="sm"
-          fullWidth
-        >
-          <DialogTitle>Daten wiederherstellen</DialogTitle>
-          <DialogContent>
-            <Alert severity="warning" sx={{ mb: 3 }}>
-              Achtung: Alle aktuellen Daten werden überschrieben!
-            </Alert>
-
-            <TextField
-              fullWidth
-              type="file"
-              inputProps={{ accept: '.json' }}
-              label="Backup-Datei auswählen"
-              sx={{ mb: 3 }}
-            />
-
-            <List>
-              <ListItem>
-                <ListItemText primary="Wiederherstellungs-Typ" secondary="Vollständig" />
-              </ListItem>
-              <ListItem>
-                <ListItemText primary="Geschätzte Zeit" secondary="Ca. 5-10 Minuten" />
-              </ListItem>
-            </List>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setRestoreDialogOpen(false)}>Abbrechen</Button>
-            <Button
-              onClick={() => handleRestoreData(new File([], 'backup.json'))}
-              variant="contained"
-              disabled={isRestoring}
-            >
-              {isRestoring ? 'Wiederherstellung läuft...' : 'Wiederherstellen'}
-            </Button>
-          </DialogActions>
-        </Dialog>
       </PageContainer>
     </GlobalErrorBoundary>
   );

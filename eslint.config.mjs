@@ -131,6 +131,12 @@ export default [
       "functions/**",
       "tests/**",
       "lib/services/__tests__/**",
+      // Generierte Test-/Report-Artefakte (gitignored) – kein Quellcode.
+      "playwright-report/**",
+      "test-results/**",
+      "blob-report/**",
+      "coverage/**",
+      "coverage-functions/**",
     ],
   },
 ];

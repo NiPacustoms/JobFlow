@@ -80,9 +80,13 @@ service cloud.firestore {
       );
       // Erstellen: Eigene Dokumente ODER Admin derselben Company.
       // Selbst-Anlage darf sich nicht selbst zum Admin machen: role muss fehlen oder 'nurse' sein.
+      // Und sie darf keine companyId frei wählen – sonst könnte sich ein Account in eine
+      // fremde Company "einschreiben" und über belongsToSameCompany fremde Daten lesen.
+      // Reguläre Anlage (Einladung/Registrierung) läuft serverseitig über das Admin SDK.
       allow create: if isAuthenticated() && (
         (request.auth.uid == uid &&
-         (!('role' in request.resource.data) || request.resource.data.role == 'nurse')) ||
+         (!('role' in request.resource.data) || request.resource.data.role == 'nurse') &&
+         (!('companyId' in request.resource.data) || request.resource.data.companyId == null)) ||
         (hasRole('admin') && creatingForSameCompany(request.resource.data.companyId))
       );
       // Aktualisieren: Eigenes Dokument (ohne Änderung rechte-relevanter Felder)
@@ -218,6 +222,22 @@ service cloud.firestore {
     // GoBD-konform: approved/submitted Timesheets sind unveränderlich
     // Mit Mandantenisolation
     match /timesheets/{timesheetId} {
+      // Stempel-Ereignisse: append-only Audit-Trail zur Zeiterfassung.
+      // Anlegen nur durch den Besitzer des Timesheets (oder Admin),
+      // Ändern/Löschen ist für ALLE verboten – Unveränderlichkeit per Rules.
+      match /events/{eventId} {
+        allow read: if isAuthenticated() && (
+          get(/databases/$(database)/documents/timesheets/$(timesheetId)).data.userId == request.auth.uid ||
+          isAdmin()
+        );
+        allow create: if isAuthenticated() &&
+          request.resource.data.by == request.auth.uid && (
+            get(/databases/$(database)/documents/timesheets/$(timesheetId)).data.userId == request.auth.uid ||
+            isAdmin()
+          );
+        allow update, delete: if false;
+      }
+
       allow read: if isAuthenticated() && (
         // Eigene Timesheets: userId muss übereinstimmen
         resource.data.userId == request.auth.uid ||
@@ -227,21 +247,35 @@ service cloud.firestore {
           belongsToSameCompany(resource.data.companyId)
         ))
       );
+      // Create: Nur eigene Timesheets (userId == auth.uid) oder Admin – vorher konnte
+      // JEDER authentifizierte Nutzer Timesheets mit beliebiger fremder userId anlegen.
       allow create: if isAuthenticated() && (
-        request.resource.data.companyId == null || 
+        request.resource.data.userId == request.auth.uid || isAdmin()
+      ) && (
+        request.resource.data.companyId == null ||
         creatingForSameCompany(request.resource.data.companyId)
       );
-      
+
       // Update: Nur wenn NICHT approved/submitted (GoBD-Konformität) und gleiche Company
       allow update: if isAuthenticated() && (
-        resource.data.companyId == null || 
-        (belongsToSameCompany(resource.data.companyId) && 
+        resource.data.companyId == null ||
+        (belongsToSameCompany(resource.data.companyId) &&
          creatingForSameCompany(request.resource.data.companyId))
       ) && (
         resource.data.userId == request.auth.uid || isAdmin()
       ) && (
-        resource.data.status != 'approved' && 
-        resource.data.status != 'submitted'
+        (
+          resource.data.status != 'approved' &&
+          resource.data.status != 'submitted'
+        ) ||
+        // Admin-Freigabe: submitted darf durch Admins zu approved/rejected
+        // überführt werden (sonst wäre der Workflow draft→submitted→approved
+        // clientseitig nie abschließbar).
+        (
+          isAdmin() &&
+          resource.data.status == 'submitted' &&
+          (request.resource.data.status == 'approved' || request.resource.data.status == 'rejected')
+        )
       );
       
       // Delete: Nur wenn NICHT approved/submitted (GoBD-Konformität) und gleiche Company
@@ -536,22 +570,12 @@ service cloud.firestore {
     }
 
     // ── Messaging (teilnehmerbasiert) ─────────────────────────────────────
-    match /channels/{id} {
-      allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
-      allow create: if isAuthenticated() && request.auth.uid in request.resource.data.participants;
-      allow update: if isAuthenticated() && request.auth.uid in resource.data.participants;
-      allow delete: if isAdmin() && belongsToSameCompany(resource.data.companyId);
+    // E-Mail-Outbox: rein serverseitig (Cloud Functions via Admin SDK) –
+    // Clients haben keinerlei Zugriff.
+    match /emailOutbox/{id} {
+      allow read, write: if false;
     }
-    match /messages/{id} {
-      // Lesen: nur wenn der Nutzer Teilnehmer des zugehörigen Channels ist.
-      allow read: if isAuthenticated() &&
-        request.auth.uid in
-          get(/databases/$(database)/documents/channels/$(resource.data.channelId)).data.participants;
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid &&
-        request.auth.uid in
-          get(/databases/$(database)/documents/channels/$(request.resource.data.channelId)).data.participants;
-      allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
-    }
+
 
     // Default: deny
     match /{document=**} {

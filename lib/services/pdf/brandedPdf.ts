@@ -122,7 +122,7 @@ export async function drawLetterhead(doc: any, opts: LetterheadOptions): Promise
   }
 
   // Meta-Block rechts
-  const meta = opts.metaLines ?? [`Erstellt am ${new Date().toLocaleDateString('de-DE')}`];
+  const meta = opts.metaLines ?? [`Erstellt am ${formatDateDE(new Date())}`];
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(...PDF_COLORS.gray);
@@ -315,7 +315,9 @@ export function signatureLine(doc: any, y: number, label: string, width = 70): n
 
 /**
  * Einheitliche autoTable-Optionen.
- * @param rightCols Spaltenindizes, die rechtsbündig gesetzt werden (Zahlen)
+ * @param rightCols Spaltenindizes, die rechtsbündig gesetzt werden (Zahlen).
+ *                  Auch die Kopfzellen dieser Spalten werden rechtsbündig
+ *                  gesetzt, damit Header und Werte fluchten.
  */
 export function brandedTableOptions(rightCols: number[] = []): Record<string, unknown> {
   const columnStyles: Record<number, { halign: 'right' }> = {};
@@ -338,6 +340,79 @@ export function brandedTableOptions(rightCols: number[] = []): Record<string, un
     },
     alternateRowStyles: { fillColor: PDF_COLORS.rowAlt },
     columnStyles,
+    didParseCell: (data: { section: string; column: { index: number }; cell: { styles: { halign?: string } } }) => {
+      if (data.section === 'head' && rightCols.includes(data.column.index)) {
+        data.cell.styles.halign = 'right';
+      }
+    },
     margin: { left: PDF_MARGIN, right: PDF_MARGIN },
   };
+}
+
+/* ── Deutsche Formatierung (einheitlich für alle Dokumente) ─────────────── */
+
+/** Datum als dd.MM.yyyy (immer zweistellig). */
+export function formatDateDE(d: Date | string | number | null | undefined): string {
+  if (d === null || d === undefined || d === '') return '–';
+  const date = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(date.getTime())) return '–';
+  return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+/** Datum + Uhrzeit als dd.MM.yyyy, HH:mm Uhr (ohne Sekunden). */
+export function formatDateTimeDE(d: Date | string | number | null | undefined): string {
+  if (d === null || d === undefined || d === '') return '–';
+  const date = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(date.getTime())) return '–';
+  const datePart = date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const timePart = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return `${datePart}, ${timePart} Uhr`;
+}
+
+/** Stunden mit deutschem Dezimalkomma, z. B. "7,50 h" bzw. "7,50". */
+export function formatHoursDE(hours: number | null | undefined, withUnit = true): string {
+  const value = typeof hours === 'number' && Number.isFinite(hours) ? hours : 0;
+  const formatted = value.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return withUnit ? `${formatted} h` : formatted;
+}
+
+/* ── KPI-Kacheln (z. B. Kennzahlen im Monatsbericht) ────────────────────── */
+
+export interface StatTile {
+  label: string;
+  value: string;
+}
+
+/**
+ * Zeichnet eine Reihe von Kennzahl-Kacheln (heller Teal-Grund, Wert groß,
+ * Label klein) über die volle Satzbreite. Gibt die neue Y-Position zurück.
+ */
+export function drawStatTiles(doc: any, y: number, tiles: StatTile[]): number {
+  if (tiles.length === 0) return y;
+  const m = PDF_MARGIN;
+  const gap = 4;
+  const tileH = 18;
+  const usable = PAGE_W - 2 * m;
+  const tileW = (usable - gap * (tiles.length - 1)) / tiles.length;
+
+  tiles.forEach((tile, i) => {
+    const x = m + i * (tileW + gap);
+    doc.setFillColor(...PDF_COLORS.tealSoft);
+    doc.setDrawColor(...PDF_COLORS.grayLight);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(x, y, tileW, tileH, 1.8, 1.8, 'FD');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(...PDF_COLORS.tealDark);
+    doc.text(tile.value, x + 4, y + 8.5);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...PDF_COLORS.gray);
+    doc.text(tile.label.toUpperCase(), x + 4, y + 14);
+  });
+
+  doc.setTextColor(...PDF_COLORS.ink);
+  return y + tileH + 8;
 }

@@ -3,7 +3,7 @@ import {
   verifyIdToken,
   adminDb,
   getRoleFromToken,
-  getCompanyIdFromToken,
+  resolveCompanyId,
 } from '@/lib/server/firebaseAdmin';
 import {
   createAuthErrorResponse,
@@ -41,7 +41,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ conf
       return createAuthErrorResponse('UNAUTHORIZED', ROUTE);
     }
 
-    const companyId = getCompanyIdFromToken(decoded) ?? '';
+    const companyId = await resolveCompanyId(decoded);
+    if (!companyId) {
+      return createValidationErrorResponse(
+        'companyId konnte nicht ermittelt werden',
+        ErrorCode.VALIDATION_REQUIRED_FIELD,
+        ROUTE
+      );
+    }
     const { configId } = await params;
     if (!configId) {
       return createValidationErrorResponse('configId fehlt.', ErrorCode.VALIDATION_REQUIRED_FIELD, ROUTE);
@@ -95,7 +102,14 @@ export async function PATCH(
       return createAuthErrorResponse('UNAUTHORIZED', ROUTE);
     }
 
-    const companyId = getCompanyIdFromToken(decoded) ?? '';
+    const companyId = await resolveCompanyId(decoded);
+    if (!companyId) {
+      return createValidationErrorResponse(
+        'companyId konnte nicht ermittelt werden',
+        ErrorCode.VALIDATION_REQUIRED_FIELD,
+        ROUTE
+      );
+    }
     const { configId } = await params;
     if (!configId) {
       return createValidationErrorResponse('configId fehlt.', ErrorCode.VALIDATION_REQUIRED_FIELD, ROUTE);
@@ -115,7 +129,7 @@ export async function PATCH(
     const body = (await req.json().catch(() => ({}))) as ScheduledReportConfigUpdate;
     const updates: Record<string, unknown> = {};
 
-    const allowedTypes = ['timesheet', 'allowances', 'shifts', 'summary'];
+    const allowedTypes = ['timesheet', 'shifts', 'summary'];
     const allowedPeriods = ['current-month', 'last-month', 'current-quarter', 'current-year'];
     const allowedFormats = ['pdf', 'excel', 'csv'];
     const allowedSchedules = ['daily', 'monthly'];
@@ -203,7 +217,14 @@ export async function DELETE(
       return createAuthErrorResponse('UNAUTHORIZED', ROUTE);
     }
 
-    const companyId = getCompanyIdFromToken(decoded) ?? '';
+    const companyId = await resolveCompanyId(decoded);
+    if (!companyId) {
+      return createValidationErrorResponse(
+        'companyId konnte nicht ermittelt werden',
+        ErrorCode.VALIDATION_REQUIRED_FIELD,
+        ROUTE
+      );
+    }
     const { configId } = await params;
     if (!configId) {
       return createValidationErrorResponse('configId fehlt.', ErrorCode.VALIDATION_REQUIRED_FIELD, ROUTE);

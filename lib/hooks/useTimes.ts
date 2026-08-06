@@ -156,15 +156,15 @@ export function useTimes() {
 
   // Export times mutation
   const exportTimesMutation = useMutation({
-    mutationFn: (format: 'pdf' | 'excel' | 'csv') => timesService.exportTimes(format),
-    onSuccess: (fileUrl) => {
-      if (fileUrl) {
-        const a = document.createElement('a');
-        a.href = fileUrl;
-        a.download = `times-${new Date().toISOString().split('T')[0]}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+    mutationFn: (format: 'pdf' | 'excel' | 'csv') => {
+      if (!userId) throw new Error('No user ID');
+      return timesService.exportTimes(format, userId);
+    },
+    onSuccess: (ergebnis) => {
+      // CSV/Excel laden im ExportService selbst herunter; das PDF liegt im
+      // Storage und wird in einem neuen Tab geöffnet.
+      if (ergebnis.art === 'url') {
+        window.open(ergebnis.wert, '_blank', 'noopener');
       }
       toast.success('Zeiten erfolgreich exportiert');
     },

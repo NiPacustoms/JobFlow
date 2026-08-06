@@ -10,10 +10,12 @@ import { facilityService } from '@/lib/services/facilities';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { ErrorDisplay } from '@/components/ui/ErrorBoundary';
 import { toast } from '@/lib/utils/toast';
+import Link from 'next/link';
 import {
   Assessment,
   Download,
   Refresh,
+  Schedule,
   Work,
   BarChart,
 } from '@mui/icons-material';
@@ -33,7 +35,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Chip,
   Alert,
   IconButton,
   FormControl,
@@ -90,7 +91,6 @@ export default function AdminBerichtePage() {
     employeeStatistics,
     isLoading,
     error,
-    formatCurrency,
     formatHours,
     getTrendIcon,
     getTrendText,
@@ -166,6 +166,15 @@ export default function AdminBerichtePage() {
             Berichte
           </Typography>
           <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              component={Link}
+              href="/admin/berichte/geplante-berichte"
+              variant="outlined"
+              startIcon={<Schedule />}
+              size="small"
+            >
+              Geplante Berichte
+            </Button>
             <Button
               variant="outlined"
               startIcon={<Download />}
@@ -635,22 +644,18 @@ export default function AdminBerichtePage() {
                       <TableHead>
                         <TableRow>
                           <TableCell>Mitarbeiter</TableCell>
-                          <TableCell>Einrichtung</TableCell>
-                          <TableCell>Stunden</TableCell>
-                          <TableCell>Zuschläge</TableCell>
-                          <TableCell>Status</TableCell>
+                          <TableCell align="right">Gesamtstunden</TableCell>
+                          <TableCell align="right">Regulär</TableCell>
+                          <TableCell align="right">Überstunden</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {timeAccountReport?.employees.slice(0, 20).map(employee => (
                           <TableRow key={employee.userId}>
                             <TableCell>{employee.userName}</TableCell>
-                            <TableCell>Einrichtung A</TableCell>
-                            <TableCell>{formatHours(employee.totalHours)}</TableCell>
-                            <TableCell>{formatCurrency(0)}</TableCell>
-                            <TableCell>
-                              <Chip label="Aktiv" color="success" size="small" />
-                            </TableCell>
+                            <TableCell align="right">{formatHours(employee.totalHours)}</TableCell>
+                            <TableCell align="right">{formatHours(employee.regularHours)}</TableCell>
+                            <TableCell align="right">{formatHours(employee.overtimeHours)}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

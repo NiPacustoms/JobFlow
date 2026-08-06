@@ -103,7 +103,7 @@ export class ExportService {
     if (includeHeaders) {
       htmlContent += '<tr>';
       headers.forEach(header => {
-        htmlContent += `<th>${header}</th>`;
+        htmlContent += `<th>${this.escapeHtml(header)}</th>`;
       });
       htmlContent += '</tr>';
     }
@@ -114,7 +114,7 @@ export class ExportService {
       headers.forEach(header => {
         const value = row[header];
         const cellClass = this.getCellClass(value);
-        htmlContent += `<td class="${cellClass}">${this.formatCellValue(value)}</td>`;
+        htmlContent += `<td class="${cellClass}">${this.escapeHtml(this.formatCellValue(value))}</td>`;
       });
       htmlContent += '</tr>';
     });
@@ -162,7 +162,7 @@ export class ExportService {
       <html>
         <head>
           <meta charset="utf-8">
-          <title>${title}</title>
+          <title>${ExportService.escapeHtml(title)}</title>
           <style>
             body { font-family: Arial, sans-serif; margin: 20px; }
             .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 20px; }
@@ -176,7 +176,7 @@ export class ExportService {
         </head>
         <body>
           <div class="header">
-            <h1>${title}</h1>
+            <h1>${ExportService.escapeHtml(title)}</h1>
             <p>Erstellt am: ${format(new Date(), 'dd.MM.yyyy HH:mm', { locale: de })}</p>
           </div>
           
@@ -187,7 +187,7 @@ export class ExportService {
     if (includeHeaders) {
       htmlContent += '<thead><tr>';
       headers.forEach(header => {
-        htmlContent += `<th>${header}</th>`;
+        htmlContent += `<th>${this.escapeHtml(header)}</th>`;
       });
       htmlContent += '</tr></thead>';
     }
@@ -199,7 +199,7 @@ export class ExportService {
       headers.forEach(header => {
         const value = row[header];
         const cellClass = this.getCellClass(value);
-        htmlContent += `<td class="${cellClass}">${this.formatCellValue(value)}</td>`;
+        htmlContent += `<td class="${cellClass}">${this.escapeHtml(this.formatCellValue(value))}</td>`;
       });
       htmlContent += '</tr>';
     });
@@ -236,6 +236,21 @@ export class ExportService {
     if (typeof value === 'number') return 'number';
     if (value instanceof Date) return 'date';
     return '';
+  }
+
+  /**
+   * HTML-Escaping für die HTML-basierten Exporte (Excel/PDF).
+   * Ohne diese Behandlung landen Firestore-Werte – etwa ein
+   * Einrichtungsname mit Markup – ungefiltert in der Datei und werden beim
+   * Öffnen im Browser ausgeführt.
+   */
+  private static escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   private static formatCellValue(value: unknown): string {

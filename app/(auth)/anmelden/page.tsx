@@ -78,11 +78,19 @@ export default function LoginPage() {
     }
   };
 
-  // Rolle kommt aus dem Konto (Firestore): Admin-Registrierung oder Einladung als Mitarbeiter
-  const redirectTarget =
-    user && !loading && !permissionsLoading
-      ? (canAccessAdminArea ? '/admin/uebersicht' : '/employee/arbeitsplatz')
-      : null;
+  // Rolle kommt aus dem Konto (Firestore): Admin-Registrierung oder Einladung als Mitarbeiter.
+  // Ein ?redirect=-Parameter (vom AuthGuard gesetzt) hat Vorrang – aber nur
+  // app-interne Pfade (Schutz vor Open-Redirect).
+  const redirectTarget = (() => {
+    if (!user || loading || permissionsLoading) return null;
+    if (typeof window !== 'undefined') {
+      const requested = new URLSearchParams(window.location.search).get('redirect');
+      if (requested && requested.startsWith('/') && !requested.startsWith('//')) {
+        return requested;
+      }
+    }
+    return canAccessAdminArea ? '/admin/uebersicht' : '/employee/arbeitsplatz';
+  })();
 
   // Sofort-Redirect (Cookie ist bereits gesetzt, da User erst nach setSessionCookie gesetzt wird). Zusätzlich Zeitgeber als Fallback.
   useEffect(() => {

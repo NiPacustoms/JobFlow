@@ -72,7 +72,23 @@ if (!admin.apps.length) {
 }
 
 export const adminAuth = admin.apps.length ? admin.auth() : null;
-export const adminDb = admin.apps.length ? admin.firestore() : null;
+
+function createAdminDb(): admin.firestore.Firestore | null {
+  if (!admin.apps.length) return null;
+  const firestore = admin.firestore();
+  try {
+    // Analog zum Client-SDK (lib/firebase.ts): optionale Felder mit Wert
+    // `undefined` dürfen einen Write nicht abbrechen. Ohne diese Einstellung
+    // wirft z. B. der Einrichtungs-Import bei leerem Feld "Typ" für JEDE Zeile.
+    firestore.settings({ ignoreUndefinedProperties: true });
+  } catch {
+    // settings() darf nur vor dem ersten Zugriff aufgerufen werden – bei
+    // Hot-Reload/mehrfachem Import ist der Wert bereits gesetzt.
+  }
+  return firestore;
+}
+
+export const adminDb = createAdminDb();
 
 /**
  * Extended Firebase Auth Token with Custom Claims
@@ -111,6 +127,27 @@ export function getCompanyIdFromToken(token: admin.auth.DecodedIdToken | null): 
   const raw =
     (token as FirebaseAuthToken).companyId ?? (token as FirebaseAuthToken).customClaims?.companyId;
   return typeof raw === 'string' && raw.length > 0 ? raw : null;
+}
+
+/**
+ * Ermittelt die companyId robust: erst aus dem Custom-Claim, sonst aus dem
+ * User-Dokument (Claim noch nicht gesynct). Gibt null zurück, wenn beides fehlt –
+ * Aufrufer dürfen NIEMALS auf '' zurückfallen, sonst greifen Queries wie
+ * `where('companyId','==','')` ins Leere bzw. auf fremde Legacy-Daten.
+ */
+export async function resolveCompanyId(
+  token: admin.auth.DecodedIdToken | null
+): Promise<string | null> {
+  const fromToken = getCompanyIdFromToken(token);
+  if (fromToken) return fromToken;
+  if (!token || !adminDb) return null;
+  try {
+    const snap = await adminDb.collection('users').doc(token.uid).get();
+    const raw = snap.data()?.companyId;
+    return typeof raw === 'string' && raw.length > 0 ? raw : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function verifyIdToken(authorizationHeader?: string) {

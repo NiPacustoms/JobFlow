@@ -36,7 +36,7 @@ import { useMemo, useState } from 'react';
 import { useDrag, useDrop } from 'react-dnd';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { Add, Close, Person, Search, Warning } from '@mui/icons-material';
+import { Add, AutoAwesome, Close, Person, Search, Warning } from '@mui/icons-material';
 import { logger, PerformanceMonitor, UserActionTracker } from '@/lib/logging';
 
 const ASSIGN_USER_TYPE = 'ASSIGN_USER';
@@ -255,6 +255,43 @@ export function AssignShiftDialog({ open, onClose, shift }: AssignShiftDialogPro
     assignUserMutation.mutate(userObj);
   };
 
+  // Matching-Vorschläge der Cloud Function (Qualifikation, Konflikte, Score).
+  // Bereits dieser Schicht zugewiesene Mitarbeiter werden ausgeblendet
+  // (sonst wäre eine Doppel-Zuweisung per Chip-Klick möglich).
+  const { data: candidateSuggestionsRaw = [] } = useQuery({
+    queryKey: ['assignCandidates', shift.id],
+    queryFn: async () => {
+      const result = await cloudFunctions.findAvailableCandidates(shift.id, { limit: 8 });
+      return result.candidates || [];
+    },
+    enabled: open,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const candidateSuggestions = useMemo(() => {
+    const assignedIds = new Set(assignedUsers.map(a => a.user.id));
+    return candidateSuggestionsRaw.filter(c => !assignedIds.has(c.userId)).slice(0, 5);
+  }, [candidateSuggestionsRaw, assignedUsers]);
+
+  /** Vorschlag zuweisen – Kandidat kann außerhalb der aktuellen Suchliste liegen. */
+  const handleAssignCandidate = async (userId: string) => {
+    const inList = availableUsers.find(u => u?.id === userId) as User | undefined;
+    if (inList) {
+      assignUserMutation.mutate(inList);
+      return;
+    }
+    try {
+      const userObj = await userService.getById(userId);
+      if (!userObj) {
+        toast.error('Mitarbeiter nicht gefunden');
+        return;
+      }
+      assignUserMutation.mutate(userObj as User);
+    } catch {
+      toast.error('Mitarbeiter konnte nicht geladen werden');
+    }
+  };
+
   const handleUnassignUser = (userId: string) => {
     if (process.env.NODE_ENV === 'development') {
       PerformanceMonitor.startTimer('shift.unassign');
@@ -414,6 +451,37 @@ export function AssignShiftDialog({ open, onClose, shift }: AssignShiftDialogPro
             <Typography variant="h6" sx={{ mb: 2 }}>
               Verfügbare Mitarbeiter
             </Typography>
+
+            {/* Matching-Vorschläge (Cloud Function: Qualifikation, Konflikte, Score) */}
+            {candidateSuggestions.length > 0 && (
+              <Box sx={{ mb: 2, p: 1.5, borderRadius: 2, bgcolor: 'action.hover' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1 }}>
+                  <AutoAwesome fontSize="small" color="primary" />
+                  <Typography variant="subtitle2">Vorschläge</Typography>
+                </Box>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {candidateSuggestions.map(candidate => (
+                    <Tooltip
+                      key={candidate.userId}
+                      title={
+                        candidate.hasConflict
+                          ? candidate.conflictDetails || 'Zeitkonflikt vorhanden'
+                          : `Score ${Math.round(candidate.score)} · ${candidate.qualifications?.join(', ') || 'keine Qualifikationen hinterlegt'}`
+                      }
+                    >
+                      <Chip
+                        label={`${candidate.displayName} (${Math.round(candidate.score)})`}
+                        color={candidate.hasConflict ? 'warning' : 'primary'}
+                        variant="outlined"
+                        icon={candidate.hasConflict ? <Warning /> : <Add />}
+                        onClick={() => void handleAssignCandidate(candidate.userId)}
+                        disabled={assignUserMutation.isPending}
+                      />
+                    </Tooltip>
+                  ))}
+                </Box>
+              </Box>
+            )}
 
             {/* Search and Filter */}
             <Box sx={{ mb: 2 }}>

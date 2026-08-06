@@ -274,26 +274,6 @@ describe.runIf(ENABLED)('Dokument-Muster rendern', () => {
     });
   }, 60000);
 
-  it('reportService: Zeitkonten- und Zuschläge-PDF', async () => {
-    const { reportService } = await import('@/lib/services/reportService');
-    await reportService.exportTimeAccountReportPDF(
-      [
-        { userId: 'emp-001', userName: 'Maria Beispiel', totalHours: 152.5, regularHours: 140, overtimeHours: 12.5, nightHours: 24, weekendHours: 15, holidayHours: 0, surchargeAmount: 218.4 },
-        { userId: 'emp-002', userName: 'Jonas Muster', totalHours: 160, regularHours: 158, overtimeHours: 2, nightHours: 0, weekendHours: 22.5, holidayHours: 7.5, surchargeAmount: 145.75 },
-        { userId: 'emp-003', userName: 'Aylin Örnek', totalHours: 121.25, regularHours: 121.25, overtimeHours: 0, nightHours: 40, weekendHours: 8, holidayHours: 0, surchargeAmount: 96.2 },
-      ] as never,
-      'zeitkonten-report.pdf'
-    );
-    await reportService.exportEmployeeStatisticsPDF(
-      [
-        { userId: 'emp-001', userName: 'Maria Beispiel', totalShifts: 21, totalHours: 152.5, averageHoursPerShift: 7.6, availabilityRate: 95.2, lastActive: new Date('2026-07-09') },
-        { userId: 'emp-002', userName: 'Jonas Muster', totalShifts: 22, totalHours: 160, averageHoursPerShift: 7.3, availabilityRate: 100, lastActive: new Date('2026-07-10') },
-        { userId: 'emp-003', userName: 'Aylin Örnek', totalShifts: 16, totalHours: 121.25, averageHoursPerShift: 8.1, availabilityRate: 93.8, lastActive: new Date('2026-07-08') },
-      ] as never,
-      'mitarbeiter-statistik.pdf'
-    );
-  }, 30000);
-
   it('timesheetProof: Tagesnachweis', async () => {
     const { timesheetProofService } = await import('@/lib/services/timesheetProof');
     await timesheetProofService.generateDailyProofPDF({

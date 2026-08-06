@@ -10,8 +10,11 @@ import { logger } from '@/lib/logging';
 export function getStartOfWeek(date: Date): Date {
   const d = new Date(date);
   const day = d.getDay();
-  // Sonntag = 0 → Mo = 1, Sa = 6. Montag = Tag 1, also diff = day - 1 (Mo=0), Sonntag = -1
-  const diff = day === 0 ? -6 : day - 1;
+  // Sonntag = 0, Montag = 1 … Samstag = 6. Der Montag der ISO-Woche liegt für
+  // einen Sonntag SECHS Tage ZURÜCK. Mit diff = -6 wurde stattdessen sechs Tage
+  // vorwärts gerechnet: Sonntagsschichten landeten in der Folgewoche und das
+  // Wochenstunden-Limit prüfte sonntags gegen eine leere, zukünftige Woche.
+  const diff = day === 0 ? 6 : day - 1;
   d.setDate(d.getDate() - diff);
   d.setHours(0, 0, 0, 0);
   return d;
@@ -35,6 +38,8 @@ export interface WeeklyHoursResult {
 /**
  * Summiert totalHours aller Timesheets (Mo–So) für den Mitarbeiter.
  * approvedOnly: false, damit auch submitted/draft für aktuelle Anzeige zählen.
+ * ABGELEHNTE (rejected) Nachweise zählen NICHT – sonst blockieren zurückgewiesene
+ * Stunden das Wochenstunden-Limit, obwohl sie nie geleistet/anerkannt wurden.
  */
 export async function calculateWeeklyHours(
   mitarbeiterId: string,
@@ -42,14 +47,17 @@ export async function calculateWeeklyHours(
 ): Promise<WeeklyHoursResult> {
   const endOfWeek = getEndOfWeek(startOfWeek);
   try {
-    const { aggregates } = await timesheetService.getByDateRange(
+    const { timesheets } = await timesheetService.getByDateRange(
       mitarbeiterId,
       startOfWeek,
       endOfWeek,
       false
     );
-    const agg = aggregates.find(a => a.userId === mitarbeiterId);
-    const wochenstunden = agg ? Math.round(agg.totalHours * 100) / 100 : 0;
+    const relevant = timesheets.filter(
+      t => t.userId === mitarbeiterId && t.status !== 'rejected'
+    );
+    const sum = relevant.reduce((acc, t) => acc + (Number(t.totalHours) || 0), 0);
+    const wochenstunden = Math.round(sum * 100) / 100;
     return {
       wochenstunden,
       startOfWeek,

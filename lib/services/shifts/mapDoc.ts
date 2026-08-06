@@ -21,6 +21,7 @@ export function mapDocToShift(id: string, data: DocData): Shift {
     stationId: data.stationId as string | undefined,
     companyId: data.companyId as string | undefined,
     date: safeDateToISOString(data.date),
+    endDate: data.endDate ? safeDateToISOString(data.endDate) : undefined,
     startTime: data.startTime as string,
     endTime: data.endTime as string,
     type: data.type as string | undefined,

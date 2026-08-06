@@ -5,6 +5,8 @@ export interface Shift {
   startTime: string;
   endTime: string;
   date: string;
+  /** Enddatum (Folgetag) bei Overnight-Schichten, ISO yyyy-MM-dd */
+  endDate?: string;
   facilityId: string;
   stationId?: string;
   companyId?: string;

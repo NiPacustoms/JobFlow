@@ -49,12 +49,12 @@ Next.js 15.5.12 (App Router), React 18.3, TypeScript 5.9 (strict), **MUI 7** (+ 
 ## 5. Environment-Variablen (aus Code extrahiert)
 
 - **Client (`NEXT_PUBLIC_`):** Firebase-Config (6), App-URL, Impressum (`COMPANY_*`, `LEGAL_FORM`, `REGISTER_*`, `RESPONSIBLE_*`, `VAT_ID`), `VAPID_KEY`, `OIDC_PROVIDER_ID`, Emulator-Flags, `DEBUG_PERMISSIONS`, `ENABLE_ADMIN_BOOTSTRAP`, `SECURITY_WEBHOOK_URL` (⚠ als NEXT_PUBLIC fragwürdig → Ph. 4).
-- **Server:** `FIREBASE_ADMIN_CREDENTIALS(_BASE64)`, `RESEND_API_KEY`/`RESEND_FROM`, SMTP_* (6), `INVITATION_EMAIL_SECRET`, `ENABLE_ADMIN_BOOTSTRAP`/`ADMIN_BOOTSTRAP_EMAIL`, `ORS_API_KEY` (OpenRouteService), `SECURITY_WEBHOOK_URL`, `GCLOUD_PROJECT`.
+- **Server:** `FIREBASE_ADMIN_CREDENTIALS(_BASE64)`, SMTP_* (6), `INVITATION_EMAIL_SECRET`, `ENABLE_ADMIN_BOOTSTRAP`/`ADMIN_BOOTSTRAP_EMAIL`, `ORS_API_KEY` (OpenRouteService), `SECURITY_WEBHOOK_URL`, `GCLOUD_PROJECT`.
 - `.env.example`, `.env.production.example`, `.env.staging.example` vorhanden; Vollständigkeit wird in Phase 10 gegen diese Liste abgeglichen.
 
 ## 6. Externe Dienste
 
-Firebase (Auth/Firestore/Storage/Functions/Hosting/FCM), Sentry, Resend (E-Mail) bzw. SMTP-Fallback, OpenRouteService (Routen/Karten), Google Fonts (CSP), Google Tag Manager (CSP erlaubt; tatsächliche Nutzung prüfen → Ph. 6 Datenschutz).
+Firebase (Auth/Firestore/Storage/Functions/Hosting/FCM), Sentry, SMTP-Anbieter (E-Mail), OpenRouteService (Routen/Karten), Google Fonts (CSP), Google Tag Manager (CSP erlaubt; tatsächliche Nutzung prüfen → Ph. 6 Datenschutz).
 
 ## 7. Tests & Qualität
 

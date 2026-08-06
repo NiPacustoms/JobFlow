@@ -501,28 +501,40 @@ export const userService = {
         }
       }
 
-      // Non-search pagination by startAfter
-      let snapForPage: unknown = null;
+      // Non-search pagination by startAfter.
+      // WICHTIG: In jeder Zwischen-Query muss limit(pageSize) gesetzt sein (sonst wird
+      // die komplette Collection gelesen) und der finale Read muss den in der Schleife
+      // aufgebauten Cursor verwenden – vorher wurde fälschlich `cursorDoc` (nur im
+      // Suchpfad belegt, hier immer null) benutzt, wodurch JEDE Seite > 1 wieder
+      // Seite 1 lieferte.
+      let snapForPage: QuerySnapshot;
       if (page <= 1) {
         snapForPage = await getDocs(query(dataBaseQuery, limit(pageSize)));
       } else {
-        // advance cursor (page-1) windows
-        let cursor: { id: string } | null = null;
+        let cursor: QueryDocumentSnapshot | null = null;
         for (let i = 1; i < page; i++) {
-          const snap: QuerySnapshot = await getDocs(query(dataBaseQuery, cursor ? startAfter(cursor as QueryDocumentSnapshot) : limit(pageSize)));
+          const snap: QuerySnapshot = await getDocs(
+            cursor
+              ? query(dataBaseQuery, startAfter(cursor), limit(pageSize))
+              : query(dataBaseQuery, limit(pageSize))
+          );
           if (snap.empty) {
             cursor = null;
             break;
           }
           cursor = snap.docs[snap.docs.length - 1];
+          // Weniger Treffer als eine volle Seite ⇒ es gibt keine weitere Seite.
+          if (snap.docs.length < pageSize) {
+            cursor = null;
+            break;
+          }
         }
-        snapForPage = await getDocs(query(dataBaseQuery, cursorDoc ? startAfter(cursorDoc as QueryDocumentSnapshot) : limit(pageSize))) as QuerySnapshot;
-        if (!snapForPage || (snapForPage as QuerySnapshot).empty) {
-          snapForPage = await getDocs(query(dataBaseQuery, limit(pageSize)));
-        }
+        snapForPage = cursor
+          ? await getDocs(query(dataBaseQuery, startAfter(cursor), limit(pageSize)))
+          : ({ docs: [], empty: true } as unknown as QuerySnapshot);
       }
 
-      const current = (snapForPage as QuerySnapshot).docs.map((d: QueryDocumentSnapshot) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }));
+      const current = snapForPage.docs.map((d: QueryDocumentSnapshot) => ({ id: d.id, ...(d.data() as Record<string, unknown>) }));
 
       // Map to User
       const users: User[] = current.map((row: Record<string, unknown>) => ({
@@ -951,7 +963,14 @@ export const userService = {
     }
     try {
       const userRef = doc(getDb(), COLLECTION_NAME, id);
+      // companyId MUSS mitgeschrieben werden – sonst ist der wiederhergestellte
+      // Mitarbeiter für alle nach companyId gefilterten Admin-Queries unsichtbar.
+      const restoredCompanyId =
+        prevData.companyId ||
+        (await (await import('@/lib/utils/companyId')).getCompanyIdFromAuth()) ||
+        undefined;
       await setDoc(userRef, {
+        ...(restoredCompanyId ? { companyId: restoredCompanyId } : {}),
         email: prevData.email,
         displayName: prevData.displayName,
         role: prevData.role,

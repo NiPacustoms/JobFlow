@@ -31,6 +31,9 @@ export interface StoredQueueItem {
   data: Record<string, unknown>;
   timestamp: number;
   retries: number;
+  /** true, wenn alle Sync-Versuche erschöpft sind (Eintrag bleibt erhalten). */
+  failed?: boolean;
+  lastError?: string | null;
 }
 
 export async function getAllQueueItems(): Promise<StoredQueueItem[]> {
@@ -83,7 +86,7 @@ export async function clearQueue(): Promise<void> {
 
 export async function updateQueueItem(
   id: string,
-  updates: Partial<Pick<StoredQueueItem, 'retries'>>
+  updates: Partial<Pick<StoredQueueItem, 'retries' | 'failed' | 'lastError'>>
 ): Promise<void> {
   const db = await openDb();
   return new Promise((resolve, reject) => {

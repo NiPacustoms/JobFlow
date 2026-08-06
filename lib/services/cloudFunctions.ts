@@ -23,7 +23,6 @@ const getUnassignShiftCF = () => httpsCallable(getFunctionsOrThrow(), 'unassignS
 const getDeclineAssignmentCF = () => httpsCallable(getFunctionsOrThrow(), 'declineAssignment');
 const getRequestShiftCF = () => httpsCallable(getFunctionsOrThrow(), 'requestShift');
 const getFindCandidatesCF = () => httpsCallable(getFunctionsOrThrow(), 'findCandidates');
-const getDeleteAllAssignmentsCF = () => httpsCallable(getFunctionsOrThrow(), 'deleteAllAssignments');
 
 export const cloudFunctions = {
   /**
@@ -249,77 +248,3 @@ export const cloudFunctions = {
   },
 };
 
-// Hilfsfunktionen für bessere UX
-export const shiftAssignmentHelpers = {
-  /**
-   * Prüft ob ein User für eine Schicht qualifiziert ist
-   * @param userQualifications User-Qualifikationen
-   * @param requiredQualifications Erforderliche Qualifikationen
-   * @returns Objekt mit Qualifikations-Status
-   */
-  checkQualifications(
-    userQualifications: string[],
-    requiredQualifications: string[]
-  ): {
-    isQualified: boolean;
-    missingQualifications: string[];
-    qualificationScore: number;
-  } {
-    const missing = requiredQualifications.filter(skill => !userQualifications.includes(skill));
-
-    const score =
-      requiredQualifications.length > 0
-        ? (requiredQualifications.length - missing.length) / requiredQualifications.length
-        : 1;
-
-    return {
-      isQualified: missing.length === 0,
-      missingQualifications: missing,
-      qualificationScore: score,
-    };
-  },
-
-  /**
-   * Formatiert Konflikt-Details für Anzeige
-   * @param conflicts Konflikt-Array
-   * @returns Formatierte Konflikt-Beschreibung
-   */
-  formatConflicts(conflicts: Array<{ facilityName?: string }>): string {
-    if (conflicts.length === 0) return '';
-
-    if (conflicts.length === 1) {
-      const conflict = conflicts[0];
-      return `Zeitkonflikt mit Schicht in ${conflict.facilityName}`;
-    }
-
-    return `${conflicts.length} Zeitkonflikte gefunden`;
-  },
-
-  /**
-   * Berechnet Score-Farbe für UI
-   * @param score Kandidaten-Score
-   * @returns CSS-Klassen für Score-Anzeige
-   */
-  getScoreColor(score: number): string {
-    if (score >= 80) return 'text-green-600';
-    if (score >= 60) return 'text-yellow-600';
-    return 'text-red-600';
-  },
-
-  /**
-   * Löscht alle Assignments aus der Datenbank
-   * WARNUNG: Diese Funktion löscht ALLE Assignments!
-   * @returns Ergebnis mit Anzahl gelöschter Assignments
-   */
-  async deleteAllAssignments(): Promise<{ success: boolean; deletedCount: number; message: string }> {
-    try {
-      const result = await getDeleteAllAssignmentsCF()({});
-      return result.data as { success: boolean; deletedCount: number; message: string };
-    } catch (error: unknown) {
-      if ((error as { code?: string }).code === 'functions/permission-denied') {
-        throw new Error('Keine Berechtigung: Nur Admins können alle Assignments löschen');
-      }
-      throw new Error((error as { message?: string }).message || 'Fehler beim Löschen der Assignments');
-    }
-  },
-};

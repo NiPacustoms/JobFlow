@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Box, Button, Paper, Typography, Stack, Link } from '@mui/material';
 import { Cookie } from '@mui/icons-material';
+import { LEGAL_URLS } from '@/lib/config/legal';
 
 export function CookieBanner() {
   const [showBanner, setShowBanner] = useState(false);
@@ -74,7 +75,7 @@ export function CookieBanner() {
             Wir verwenden Cookies, um Ihnen die bestmögliche Erfahrung zu bieten und unsere Website
             zu analysieren. Durch die Nutzung unserer Website stimmen Sie unserer{' '}
             <Link
-              href="/recht/datenschutz"
+              href={LEGAL_URLS.datenschutz}
               underline="hover"
               target="_blank"
               rel="noopener noreferrer"

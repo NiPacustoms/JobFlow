@@ -23,8 +23,6 @@ await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(db, 'notificationSettings/nsA'), { userId: 'nurseA' });
   await setDoc(doc(db, 'fcmTokens/nurseA'), { userId: 'nurseA', token: 'x' });
   await setDoc(doc(db, 'staffGroups/sgA'), { companyId: 'firmaA', members: ['nurseA'] });
-  await setDoc(doc(db, 'channels/chA'), { participants: ['nurseA', 'adminA'], companyId: 'firmaA' });
-  await setDoc(doc(db, 'messages/msgA'), { channelId: 'chA', userId: 'adminA', text: 'hi' });
 });
 
 const nurseA = env.authenticatedContext('nurseA', { role: 'nurse', companyId: 'firmaA' }).firestore();
@@ -62,12 +60,6 @@ await check('Mitglied (nurseA) liest staffGroup', 'ALLOW', () => getDoc(doc(nurs
 await check('Fremd-Admin (B) liest staffGroup A', 'DENY', () => getDoc(doc(adminB, 'staffGroups/sgA')));
 
 console.log('--- Messaging (teilnehmerbasiert) ---');
-await check('Teilnehmer (nurseA) liest Channel', 'ALLOW', () => getDoc(doc(nurseA, 'channels/chA')));
-await check('Nicht-Teilnehmer liest Channel', 'DENY', () => getDoc(doc(outsider, 'channels/chA')));
-await check('Teilnehmer liest Nachrichten des Channels', 'ALLOW',
-  () => getDocs(query(collection(nurseA, 'messages'), where('channelId', '==', 'chA'))));
-await check('Nicht-Teilnehmer liest Nachrichten', 'DENY',
-  () => getDocs(query(collection(outsider, 'messages'), where('channelId', '==', 'chA'))));
 
 await env.cleanup();
 console.log(`--- Test beendet: ${failures} Fehler ---`);

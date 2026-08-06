@@ -77,7 +77,6 @@ export const useAdminReports = (filters: AdminReportFilters) => {
           totalHours: e.totalHours,
           regularHours: e.regularHours,
           overtimeHours: e.overtimeHours,
-          surchargeAmount: e.surchargeAmount,
         }))
       };
     },

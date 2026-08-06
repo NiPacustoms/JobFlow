@@ -16,7 +16,7 @@ const REPORTS_COLLECTION = 'reports';
 export interface ScheduledReportConfig {
   id: string;
   companyId: string;
-  type: 'timesheet' | 'allowances' | 'shifts' | 'summary';
+  type: 'timesheet' | 'shifts' | 'summary';
   period: 'current-month' | 'last-month' | 'current-quarter' | 'current-year';
   format: 'pdf' | 'excel' | 'csv';
   recipientEmails: string[];
@@ -51,7 +51,6 @@ function isDue(config: ScheduledReportConfig, now: Date): boolean {
 function getReportTitle(type: string, period: string): string {
   const typeLabels: Record<string, string> = {
     timesheet: 'Zeiterfassung',
-    allowances: 'Zuschläge',
     shifts: 'Schichten',
     summary: 'Zusammenfassung',
   };

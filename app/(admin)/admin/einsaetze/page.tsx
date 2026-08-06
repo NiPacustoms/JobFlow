@@ -141,11 +141,11 @@ export default function AssignmentsPage() {
 
   const stats = getStats();
 
-  /** Einsätze mit Einsatzmitteilung (pdfUrl) für Sammel-PDF */
+  /** Einsätze mit Einsatzmitteilung (formPdfUrl, Fallback pdfUrl) für Sammel-PDF */
   const assignmentsWithPdf = useMemo((): AssignmentForCollection[] => {
     return assignments
-      .filter((a): a is typeof a & { pdfUrl: string } => Boolean(a.pdfUrl))
-      .map(a => ({ id: a.id, userId: a.userId, pdfUrl: a.pdfUrl! }));
+      .map(a => ({ id: a.id, userId: a.userId, pdfUrl: a.formPdfUrl || a.pdfUrl }))
+      .filter((a): a is AssignmentForCollection => Boolean(a.pdfUrl));
   }, [assignments]);
 
   const handleExportCollectionPdf = async () => {

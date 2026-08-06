@@ -6,7 +6,7 @@ import { logger } from '@/lib/logging';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePermissions } from '../../contexts/PermissionsContext';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { adminSettingsService } from '@/lib/services/adminSettings';
@@ -20,6 +20,7 @@ export function AuthGuard({ children, requireAdmin = false }: AuthGuardProps) {
   const { user, loading, firebaseUser } = useAuth();
   const { canAccessAdminArea } = usePermissions();
   const router = useRouter();
+  const pathname = usePathname();
   const isE2E =
     typeof window !== 'undefined' &&
     (window as unknown as { __E2E_TEST_MODE__?: boolean }).__E2E_TEST_MODE__ === true;
@@ -136,7 +137,9 @@ export function AuthGuard({ children, requireAdmin = false }: AuthGuardProps) {
   useEffect(() => {
     if (isE2E) return;
     if (!loading && !user) {
-      router.push('/anmelden');
+      // Ursprüngliches Ziel mitgeben, damit der Login dorthin zurückführt
+      const target = pathname && pathname.startsWith('/') && !pathname.startsWith('//') ? pathname : '/';
+      router.push(`/anmelden?redirect=${encodeURIComponent(target)}`);
       return;
     }
     // Ohne Admin-Recht: nach Bootstrap-Versuch in den Mitarbeiterbereich (Admin hat keine Nurse-Rolle; Nurse bleibt Nurse)
@@ -149,7 +152,7 @@ export function AuthGuard({ children, requireAdmin = false }: AuthGuardProps) {
     ) {
       router.replace('/employee/arbeitsplatz');
     }
-  }, [loading, user, router, isE2E, requireAdmin, canAccessAdminArea, bootstrapDone, firebaseUser]);
+  }, [loading, user, router, pathname, isE2E, requireAdmin, canAccessAdminArea, bootstrapDone, firebaseUser]);
 
   if (loading || isSyncingClaims || (!user && typeof window !== 'undefined')) {
     return (

@@ -10,25 +10,8 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { PermissionsProvider } from '@/contexts/PermissionsContext';
 import { QueryProvider } from '@/lib/providers/QueryProvider';
 import { GlobalErrorBoundary } from '@/components/errors/GlobalErrorBoundary';
-import { validateLegalConfig } from '@/lib/config/legal';
-import { logger } from '@/lib/logging';
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
-
-// Production safety check: Validiere Legal-Config beim Import
-// Nur in Production validieren, nicht in Development
-if (typeof window === 'undefined' && process.env.NODE_ENV === 'production') {
-  try {
-    validateLegalConfig();
-  } catch (error) {
-    // In Production sollte dies einen Fehler werfen, aber wir loggen es auch
-    logger.error(
-      'Legal config validation failed',
-      error instanceof Error ? error : new Error(String(error))
-    );
-    throw error;
-  }
-}
 import './globals.css';
 
 const inter = Inter({
@@ -165,7 +148,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       var registerFirebaseSW = function(retryCount) {
                         retryCount = retryCount || 0;
                         var maxRetries = 3, retryDelay = 1000 * (retryCount + 1);
-                        navigator.serviceWorker.register('/firebase-messaging-sw.js')
+                        // WICHTIG: Eigener Scope. Beide SW-Skripte liegen im Root; ohne
+                        // eigenen Scope registrieren beide auf '/' und der zweite ERSETZT
+                        // den ersten – die PWA-/Offline-Logik aus sw.js wäre tot.
+                        navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/firebase-cloud-messaging-push-scope' })
                           .then(function(registration) {
                             logger.info('✅ [SW] Firebase messaging SW registered', { scope: registration && registration.scope });
                             var waitForActivation = function() {

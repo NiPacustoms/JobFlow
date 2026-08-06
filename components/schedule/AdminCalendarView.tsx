@@ -338,16 +338,12 @@ export default function AdminCalendarView({
                         title?: string;
                         facility?: { name?: string };
                         assignedTo?: string[];
-                        surchargeNight?: boolean;
-                        surchargeWeekend?: boolean;
-                        surchargeHoliday?: boolean;
-                        surchargeOnCall?: boolean;
                         color?: string;
                         shiftGroupId?: string;
                       };
                       const s = shift as unknown as ShiftLike3;
                       const time =
-                        s.startTime && s.endTime ? `${s.startTime}–${s.endTime}` : undefined;
+                        s.startTime && s.endTime ? `${s.startTime}–${s.endTime}${s.endTime < s.startTime ? ' (+1)' : ''}` : undefined;
                       const assignedTo: string[] = (s.assignedTo || []) as string[];
                       const shiftColor = s.color || DEFAULT_SHIFT_COLOR;
                       const isPartOfGroup = !!s.shiftGroupId;
@@ -522,7 +518,7 @@ export default function AdminCalendarView({
       shiftGroupId?: string;
     };
     const s = shift as unknown as ShiftLike;
-    const time = s.startTime && s.endTime ? `${s.startTime}–${s.endTime}` : undefined;
+    const time = s.startTime && s.endTime ? `${s.startTime}–${s.endTime}${s.endTime < s.startTime ? ' (+1)' : ''}` : undefined;
     const assignedTo: string[] = (s.assignedTo || []) as string[];
     const shiftColor = s.color || DEFAULT_SHIFT_COLOR;
     const isPartOfGroup = !!s.shiftGroupId;

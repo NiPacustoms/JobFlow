@@ -435,6 +435,14 @@ function DashboardPageContent() {
                       </Button>
                       <Button
                         component={Link}
+                        href="/employee/zeiten"
+                        variant="outlined"
+                        size="small"
+                      >
+                        Mein Zeitkonto
+                      </Button>
+                      <Button
+                        component={Link}
                         href="/employee/dienstplan"
                         variant="outlined"
                         size="small"

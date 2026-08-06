@@ -65,6 +65,9 @@ export interface Assignment {
   pdfGenerated?: boolean;
   pdfGeneratedAt?: Date;
   pdfUrl?: string;
+  /** Einsatzmitteilung aus dem Mitarbeiter-Formular (getrennt von pdfUrl). */
+  formPdfUrl?: string;
+  formPdfGeneratedAt?: Date;
   pdfSentTo?: {
     employee: boolean;
     admin: boolean;
@@ -99,6 +102,7 @@ import {
   limit,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   updateDoc,
   where,
@@ -117,27 +121,10 @@ export const assignmentService = {
       const assignmentDoc = await getDoc(doc(getDb(), COLLECTION_NAME, id));
       if (!assignmentDoc.exists()) return null;
 
-      const data = assignmentDoc.data();
-      return {
-        id: assignmentDoc.id,
-        userId: data.userId,
-        shiftId: data.shiftId,
-        companyId: data.companyId,
-        status: data.status,
-        assignedAt: data.assignedAt?.toDate() || new Date(),
-        acceptedAt: data.acceptedAt?.toDate(),
-        declinedAt: data.declinedAt?.toDate(),
-        completedAt: data.completedAt?.toDate(),
-        notes: data.notes,
-        createdAt: data.createdAt?.toDate() || new Date(),
-        updatedAt: data.updatedAt?.toDate() || new Date(),
-        decidedAt: data.decidedAt?.toDate(),
-        declineReason: data.declineReason,
-        requiresSignature: data.requiresSignature,
-        signedBy: data.signedBy,
-        signedAt: data.signedAt?.toDate(),
-        penaltyFlag: data.penaltyFlag,
-      };
+      // Vollständiges Mapping (inkl. pdfGenerated, signatureSchedule, formStatus,
+      // dailySignatures) – die frühere Teil-Abbildung ließ diese Felder weg und
+      // hebelte damit u. a. den Mehrfachversand-Guard des Nachweis-PDFs aus.
+      return this.mapDocToAssignment(assignmentDoc);
     } catch (error) {
       const appError = errorHandler.handleFirebaseError(error);
       logger.error('Failed to get assignment by ID', appError);
@@ -551,10 +538,23 @@ export const assignmentService = {
     const startTime = startDate.getTime();
     const endTime = endDate.getTime();
 
-    return assignments.filter(assignment => {
-      const assignedAt = assignment.assignedAt instanceof Date ? assignment.assignedAt.getTime() : 0;
-      return assignedAt >= startTime && assignedAt <= endTime;
-    });
+    // Nach SCHICHTDATUM filtern (nicht nach assignedAt = Zuweisungszeitpunkt):
+    // Der Dienstplan fragt „welche Einsätze finden in diesem Zeitraum statt".
+    const { shiftService } = await import('./shifts');
+    const filtered: Assignment[] = [];
+    for (const assignment of assignments) {
+      try {
+        const shift = await shiftService.getById(assignment.shiftId);
+        if (!shift?.date) continue;
+        const shiftTime = new Date(shift.date).getTime();
+        if (shiftTime >= startTime && shiftTime <= endTime) {
+          filtered.push(assignment);
+        }
+      } catch {
+        // Schicht nicht ladbar → Assignment nicht zuordenbar, überspringen
+      }
+    }
+    return filtered;
   },
 
   async getActiveByShift(shiftId: string): Promise<Assignment[]> {
@@ -959,28 +959,30 @@ return assignments;
       today.setHours(0, 0, 0, 0);
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
-      
-      // Hole alle Assignments für heute und filtere nach Status
-      const q = query(
-        collection(getDb(), COLLECTION_NAME),
-        where('companyId', '==', companyId),
-        where('userId', '==', userId),
-        where('assignedAt', '>=', today),
-        where('assignedAt', '<', tomorrow),
-        orderBy('assignedAt', 'asc')
+
+      // „Heutiger Einsatz" = die SCHICHT findet heute statt (nicht: die
+      // Zuweisung wurde heute erstellt). Deshalb aktive Assignments laden
+      // und über das Schichtdatum filtern.
+      const assignments = await this.getByUserId(userId, companyId, 100);
+      const active = assignments.filter(
+        a => a.status === 'accepted' || a.status === 'assigned'
       );
-      
-      const snapshot = await getDocs(q);
-      if (snapshot.empty) return null;
-      
-      // Filtere nach akzeptiertem oder zugewiesenem Status
-      for (const doc of snapshot.docs) {
-        const assignment = this.mapDocToAssignment(doc);
-        if (assignment && (assignment.status === 'accepted' || assignment.status === 'assigned')) {
-          return assignment;
+      if (active.length === 0) return null;
+
+      const { shiftService } = await import('./shifts');
+      for (const assignment of active) {
+        try {
+          const shift = await shiftService.getById(assignment.shiftId);
+          if (!shift?.date) continue;
+          const shiftDate = new Date(shift.date);
+          if (shiftDate >= today && shiftDate < tomorrow) {
+            return assignment;
+          }
+        } catch {
+          // Schicht nicht ladbar → nächstes Assignment prüfen
         }
       }
-      
+
       return null;
     } catch (error) {
       logger.error('Error fetching today assignment', error instanceof Error ? error : new Error(String(error)));
@@ -1000,19 +1002,31 @@ return assignments;
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       tomorrow.setHours(0, 0, 0, 0);
-      
-      const q = query(
-        collection(getDb(), COLLECTION_NAME),
-        where('companyId', '==', companyId),
-        where('userId', '==', userId),
-        where('assignedAt', '>=', tomorrow),
-        where('status', '==', 'pending'),
-        orderBy('assignedAt', 'asc'),
-        limit(5)
+
+      // „Kommende Einsätze" = SCHICHTEN ab morgen (die frühere Query auf
+      // assignedAt >= morgen war immer leer, da assignedAt der
+      // Erstellungszeitpunkt ist und nie in der Zukunft liegt).
+      const assignments = await this.getByUserId(userId, companyId, 100);
+      const active = assignments.filter(
+        a => a.status === 'accepted' || a.status === 'assigned'
       );
-      
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(doc => this.mapDocToAssignment(doc));
+
+      const { shiftService } = await import('./shifts');
+      const upcoming: Array<{ assignment: Assignment; date: Date }> = [];
+      for (const assignment of active) {
+        try {
+          const shift = await shiftService.getById(assignment.shiftId);
+          if (!shift?.date) continue;
+          const shiftDate = new Date(shift.date);
+          if (shiftDate >= tomorrow) {
+            upcoming.push({ assignment, date: shiftDate });
+          }
+        } catch {
+          // Schicht nicht ladbar → überspringen
+        }
+      }
+      upcoming.sort((a, b) => a.date.getTime() - b.date.getTime());
+      return upcoming.slice(0, 5).map(u => u.assignment);
     } catch (error) {
       logger.error('Error fetching upcoming assignments', error instanceof Error ? error : new Error(String(error)));
       throw error;
@@ -1091,7 +1105,21 @@ return assignments;
       pdfGenerated: data.pdfGenerated as boolean | undefined,
       pdfGeneratedAt: (data.pdfGeneratedAt as { toDate?: () => Date } | undefined)?.toDate?.(),
       pdfUrl: data.pdfUrl as string | undefined,
+      formPdfUrl: data.formPdfUrl as string | undefined,
+      formPdfGeneratedAt: (data.formPdfGeneratedAt as { toDate?: () => Date } | undefined)?.toDate?.(),
       pdfSentTo: data.pdfSentTo as { employee: boolean; admin: boolean; facility: boolean } | undefined,
+      formStatus: data.formStatus as Assignment['formStatus'],
+      formPlace: data.formPlace as string | undefined,
+      formTimes: data.formTimes as string | undefined,
+      formNotes: data.formNotes as string | undefined,
+      formSignatureName: data.formSignatureName as string | undefined,
+      formSignedAt: (data.formSignedAt as { toDate?: () => Date } | undefined)?.toDate?.(),
+      dailySignatures: (data.dailySignatures as Array<{ date: string; name: string; signedAt: Date | { toDate: () => Date } }> | undefined)?.map(sig => ({
+        ...sig,
+        signedAt: sig.signedAt instanceof Date ? sig.signedAt : (sig.signedAt as { toDate: () => Date }).toDate(),
+      })),
+      finalSummarySignedBy: data.finalSummarySignedBy as string | undefined,
+      finalSummarySignedAt: (data.finalSummarySignedAt as { toDate?: () => Date } | undefined)?.toDate?.(),
     };
   },
 
@@ -1115,68 +1143,74 @@ return assignments;
   ): Promise<void> {
     try {
       const assignmentRef = doc(getDb(), COLLECTION_NAME, assignmentId);
-      const assignmentDoc = await getDoc(assignmentRef);
 
-      if (!assignmentDoc.exists()) {
-        throw new Error('Assignment not found');
-      }
+      // Read-modify-write auf zwei Arrays (relievingSignatures + collectedDates).
+      // Ohne Transaktion überschreiben zwei zeitgleiche Signaturen (z. B. zwei
+      // Tage kurz hintereinander oder zwei Geräte) einander – eine Unterschrift
+      // ginge verloren und der Nachweis würde nie vollständig.
+      await runTransaction(getDb(), async transaction => {
+        const assignmentDoc = await transaction.get(assignmentRef);
+        if (!assignmentDoc.exists()) {
+          throw new Error('Assignment not found');
+        }
 
-      const currentData = assignmentDoc.data();
-      const existingSignatures = (currentData.relievingSignatures as Array<{
-        date: string;
-        signerName: string;
-        signerRole?: string;
-        signatureUrl: string;
-        signedAt: Date | { toDate: () => Date };
-        timesheetId?: string;
-        verifiedTimes?: {
-          startTime: string;
-          endTime: string;
-          breakMinutes: number;
-          totalHours: number;
+        const currentData = assignmentDoc.data();
+        const existingSignatures = (currentData.relievingSignatures as Array<{
+          date: string;
+          signerName: string;
+          signerRole?: string;
+          signatureUrl: string;
+          signedAt: Date | { toDate: () => Date };
+          timesheetId?: string;
+          verifiedTimes?: {
+            startTime: string;
+            endTime: string;
+            breakMinutes: number;
+            totalHours: number;
+          };
+        }>) || [];
+
+        // Check if signature for this date already exists
+        const existingIndex = existingSignatures.findIndex(sig => sig.date === signatureData.date);
+
+        const newSignature = {
+          date: signatureData.date,
+          signerName: signatureData.signerName,
+          signerRole: signatureData.signerRole,
+          signatureUrl: signatureData.signatureUrl,
+          signedAt: signatureData.signedAt,
+          timesheetId: signatureData.timesheetId,
+          verifiedTimes: signatureData.verifiedTimes,
         };
-      }>) || [];
 
-      // Check if signature for this date already exists
-      const existingIndex = existingSignatures.findIndex(sig => sig.date === signatureData.date);
-      
-      const newSignature = {
-        date: signatureData.date,
-        signerName: signatureData.signerName,
-        signerRole: signatureData.signerRole,
-        signatureUrl: signatureData.signatureUrl,
-        signedAt: signatureData.signedAt,
-        timesheetId: signatureData.timesheetId,
-        verifiedTimes: signatureData.verifiedTimes,
-      };
+        let updatedSignatures: typeof existingSignatures;
+        if (existingIndex >= 0) {
+          // Update existing signature
+          updatedSignatures = [...existingSignatures];
+          updatedSignatures[existingIndex] = newSignature;
+        } else {
+          // Add new signature
+          updatedSignatures = [...existingSignatures, newSignature];
+        }
 
-      let updatedSignatures: typeof existingSignatures;
-      if (existingIndex >= 0) {
-        // Update existing signature
-        updatedSignatures = [...existingSignatures];
-        updatedSignatures[existingIndex] = newSignature;
-      } else {
-        // Add new signature
-        updatedSignatures = [...existingSignatures, newSignature];
-      }
+        // Update collected dates in signature schedule
+        const collectedDates = [...((currentData.signatureSchedule?.collectedDates as string[]) || [])];
+        if (!collectedDates.includes(signatureData.date)) {
+          collectedDates.push(signatureData.date);
+        }
 
-      // Update collected dates in signature schedule
-      const collectedDates = (currentData.signatureSchedule?.collectedDates as string[]) || [];
-      if (!collectedDates.includes(signatureData.date)) {
-        collectedDates.push(signatureData.date);
-      }
+        // Update signature schedule
+        const signatureSchedule = currentData.signatureSchedule || {};
+        const updatedSchedule = {
+          ...signatureSchedule,
+          collectedDates,
+        };
 
-      // Update signature schedule
-      const signatureSchedule = currentData.signatureSchedule || {};
-      const updatedSchedule = {
-        ...signatureSchedule,
-        collectedDates,
-      };
-
-      await updateDoc(assignmentRef, {
-        relievingSignatures: updatedSignatures,
-        signatureSchedule: updatedSchedule,
-        updatedAt: serverTimestamp(),
+        transaction.update(assignmentRef, {
+          relievingSignatures: updatedSignatures,
+          signatureSchedule: updatedSchedule,
+          updatedAt: serverTimestamp(),
+        });
       });
 
       // Check if all signatures are collected and generate PDF if so
@@ -1200,48 +1234,31 @@ return assignments;
         return;
       }
 
-      // Import services dynamically
-      const { shiftService } = await import('./shifts');
-      const { timesheetService } = await import('./timesheets');
-      
-      // Check if all signatures collected inline
+      // Check if all signatures collected inline.
+      // WICHTIG: echte Teilmengen-Prüfung statt Längenvergleich – eine Signatur für
+      // einen NICHT geforderten Tag hätte sonst einen fehlenden Pflichttag
+      // "aufgefüllt" und den Nachweis vorzeitig als vollständig gemeldet.
+      const toDateKey = (value: Date | string): string => {
+        const d = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      };
       const areAllSignaturesCollected = (schedule: typeof assignment.signatureSchedule) => {
         if (!schedule?.requiredDates?.length) return true;
-        return schedule.collectedDates?.length === schedule.requiredDates.length;
+        const collected = new Set((schedule.collectedDates || []).map(toDateKey));
+        return schedule.requiredDates.every(required => collected.has(toDateKey(required)));
       };
 
-      const shift = await shiftService.getById(assignment.shiftId);
-      if (!shift) {
-        return;
-      }
-
-      // Check if all relieving signatures are collected
-      const shiftDateValue = typeof shift.date === 'string' ? new Date(shift.date) : (shift.date as Date);
-      const assignmentStart = shiftDateValue;
-      const assignmentEnd = shiftDateValue; // For now, single day assignments
-      
       const allRelievingSignaturesCollected = areAllSignaturesCollected(assignment.signatureSchedule);
 
       if (!allRelievingSignaturesCollected) {
         return; // Not all signatures collected yet
       }
 
-      // Check if facility signatures exist for all timesheets
-      const timesheets = await timesheetService.getByUserAndDateRange(
-        assignment.userId,
-        assignmentStart,
-        assignmentEnd
-      );
-
-      // For now, we require at least one facility signature
-      // In a more complex scenario, we might require facility signatures for all days
-      const hasFacilitySignatures = timesheets.some(ts => ts.facilitySignatureUrl);
-
-      if (!hasFacilitySignatures && timesheets.length > 0) {
-        return; // Facility signatures not yet collected
-      }
-
-      // All signatures collected - generate PDF and send emails
+      // Mitarbeiter-Signaturen sind vollständig → Nachweis sofort versenden.
+      // Die Einrichtungssignatur ist KEINE Voraussetzung (Entscheidung 22.07.2026):
+      // fehlt sie, wird der Nachweis mit Vermerk „Einrichtungssignatur ausstehend"
+      // an Mitarbeiter, Einrichtung und die Zentrale verschickt.
       await this.generateSignaturePDFAndSendEmails(assignmentId);
     } catch (error) {
       logger.error('Error checking and generating PDF', error instanceof Error ? error : new Error(String(error)));
@@ -1409,6 +1426,29 @@ return assignments;
               logger.error('Error sending email to facility', err instanceof Error ? err : new Error(String(err)));
             })
         );
+      }
+
+      // Email an die Zentrale (info@) – fester Empfänger für jeden Stundennachweis
+      try {
+        const { getLegalInfo } = await import('@/lib/config/legal');
+        const centralEmail = getLegalInfo().contact.email;
+        if (centralEmail) {
+          emailPromises.push(
+            sendAssignmentSignatureEmail({
+              to: centralEmail,
+              employeeName,
+              assignmentId: assignment.id,
+              pdfUrl: pdfResult.url,
+              facilityName,
+              shiftDate,
+              recipientType: 'admin',
+            }).catch(err => {
+              logger.error('Error sending email to central office', err instanceof Error ? err : new Error(String(err)));
+            })
+          );
+        }
+      } catch (err) {
+        logger.error('Error resolving central office email', err instanceof Error ? err : new Error(String(err)));
       }
 
       // Wait for all emails and documents to be saved (parallel execution)

@@ -133,6 +133,23 @@ export const assignShift = functions.https.onCall(async (data, context) => {
 
       const user = userDoc.data()!;
 
+      // Duplikat-Guard: derselbe User darf derselben Schicht nicht zweimal
+      // zugewiesen werden (z. B. Doppelklick, Retry, Vorschlags-Chip).
+      const duplicateSnap = await transaction.get(
+        db
+          .collection('assignments')
+          .where('shiftId', '==', shiftId)
+          .where('userId', '==', userId)
+          .where('status', 'in', ['requested', 'assigned', 'accepted', 'pending', 'pending-signature'])
+          .limit(1)
+      );
+      if (!duplicateSnap.empty) {
+        throw new functions.https.HttpsError(
+          'already-exists',
+          'User is already assigned to this shift'
+        );
+      }
+
       // 4. Qualifikationsprüfung
       const requiredSkills = shift.requiredSkills || [];
       const userQualifications = user.qualifications || [];

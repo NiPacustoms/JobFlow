@@ -25,13 +25,6 @@ export interface SystemSettings {
   showLogo: boolean;
   customColors: boolean;
   
-  // Surcharges
-  nightSurchargeEnabled: boolean;
-  nightSurchargeRate: number;
-  weekendSurchargeEnabled: boolean;
-  weekendSurchargeRate: number;
-  holidaySurchargeEnabled: boolean;
-  holidaySurchargeRate: number;
   
   // Notifications
   emailNotifications: boolean;
@@ -73,12 +66,6 @@ export interface SettingsUpdateData {
   secondaryColor?: string;
   showLogo?: boolean;
   customColors?: boolean;
-  nightSurchargeEnabled?: boolean;
-  nightSurchargeRate?: number;
-  weekendSurchargeEnabled?: boolean;
-  weekendSurchargeRate?: number;
-  holidaySurchargeEnabled?: boolean;
-  holidaySurchargeRate?: number;
   emailNotifications?: boolean;
   pushNotifications?: boolean;
   smsNotifications?: boolean;
@@ -123,12 +110,6 @@ class SettingsService {
       secondaryColor: '#dc004e',
       showLogo: true,
       customColors: false,
-      nightSurchargeEnabled: true,
-      nightSurchargeRate: 2.5,
-      weekendSurchargeEnabled: true,
-      weekendSurchargeRate: 1.5,
-      holidaySurchargeEnabled: false,
-      holidaySurchargeRate: 3.0,
       emailNotifications: true,
       pushNotifications: true,
       smsNotifications: false,
@@ -338,17 +319,6 @@ class SettingsService {
     await this.updateSettings(data, userId);
   }
 
-  async updateSurchargeSettings(data: {
-    nightSurchargeEnabled?: boolean;
-    nightSurchargeRate?: number;
-    weekendSurchargeEnabled?: boolean;
-    weekendSurchargeRate?: number;
-    holidaySurchargeEnabled?: boolean;
-    holidaySurchargeRate?: number;
-  }, userId: string): Promise<void> {
-    await this.updateSettings(data, userId);
-  }
-
   async updateNotificationSettings(data: {
     emailNotifications?: boolean;
     pushNotifications?: boolean;
@@ -408,17 +378,8 @@ class SettingsService {
       errors.push('Sekundärfarbe muss ein gültiger Hex-Code sein');
     }
 
-    if (data.nightSurchargeRate !== undefined && (data.nightSurchargeRate < 0 || data.nightSurchargeRate > 100)) {
-      errors.push('Nachtzuschlag muss zwischen 0 und 100 Euro liegen');
-    }
 
-    if (data.weekendSurchargeRate !== undefined && (data.weekendSurchargeRate < 0 || data.weekendSurchargeRate > 100)) {
-      errors.push('Wochenendzuschlag muss zwischen 0 und 100 Euro liegen');
-    }
 
-    if (data.holidaySurchargeRate !== undefined && (data.holidaySurchargeRate < 0 || data.holidaySurchargeRate > 100)) {
-      errors.push('Feiertagszuschlag muss zwischen 0 und 100 Euro liegen');
-    }
 
     if (data.notificationEmail !== undefined && data.notificationEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.notificationEmail)) {
       errors.push('E-Mail-Adresse ist ungültig');

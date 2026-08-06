@@ -7,6 +7,9 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
+/** Bestätigungs-Token, das der Aufrufer explizit mitsenden muss (Schutz vor versehentlichem Aufruf). */
+export const DELETE_ALL_ASSIGNMENTS_CONFIRMATION = 'DELETE-ALL-ASSIGNMENTS';
+
 /**
  * Cloud Function zum Löschen aller Assignments
  * WARNUNG: Diese Funktion löscht ALLE Assignments aus der Datenbank!
@@ -22,6 +25,16 @@ export const deleteAllAssignments = functions.https.onCall(async (data, context)
   if (userRole !== 'admin') {
     throw new functions.https.HttpsError('permission-denied', 'Only admins can delete all assignments');
   }
+
+  // Destruktive Wartungsfunktion: nur mit explizitem Bestätigungs-Token ausführbar
+  if ((data as { confirm?: string })?.confirm !== DELETE_ALL_ASSIGNMENTS_CONFIRMATION) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      `Bestätigung erforderlich: confirm muss "${DELETE_ALL_ASSIGNMENTS_CONFIRMATION}" sein.`
+    );
+  }
+
+  functions.logger.warn('deleteAllAssignments bestätigt aufgerufen', { uid: context.auth.uid });
 
   try {
     functions.logger.info('Starting deletion of all assignments...');

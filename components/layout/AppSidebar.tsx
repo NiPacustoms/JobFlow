@@ -67,6 +67,8 @@ const nurseMainItems: NavItem[] = [
 
 const nurseMoreItems: NavItem[] = [
   { href: ROUTES.EMPLOYEE.ASSIGNMENTS, icon: <AssignmentIcon />, label: 'Meine Einsätze' },
+  { href: ROUTES.EMPLOYEE.ZEITEN, icon: <Schedule />, label: 'Zeiten & Zeitkonto' },
+  { href: ROUTES.EMPLOYEE.BERICHTE, icon: <Assessment />, label: 'Meine Berichte' },
   {
     href: ROUTES.EMPLOYEE.DOKUMENTE,
     icon: <Description />,

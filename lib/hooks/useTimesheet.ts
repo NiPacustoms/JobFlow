@@ -20,7 +20,21 @@ export const useTimesheet = (date?: Date) => {
     queryKey: ['timesheet', userId, format(targetDate, 'yyyy-MM-dd')],
     queryFn: async () => {
       if (!userId) return null;
-      return await timesheetService.getByDate(userId, targetDate);
+      const todaySheet = await timesheetService.getByDate(userId, targetDate);
+      if (todaySheet) return todaySheet;
+      // Nachtschicht-Rollover: Eine um z. B. 22:00 gestartete Schicht ist unter
+      // dem VORTAG gespeichert. Nach Mitternacht wäre die Schnell-Erfassung
+      // sonst „leer" und die laufende Schicht nicht mehr beendbar.
+      if (!date) {
+        const yesterday = new Date(targetDate);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdaySheet = await timesheetService.getByDate(userId, yesterday);
+        const isOpenDraft =
+          yesterdaySheet?.status === 'draft' &&
+          (!yesterdaySheet.endTime || yesterdaySheet.endTime === yesterdaySheet.startTime);
+        if (isOpenDraft) return yesterdaySheet;
+      }
+      return null;
     },
     enabled: !!userId,
     staleTime: 2 * 60 * 1000, // 2 minutes

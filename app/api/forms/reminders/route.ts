@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Timestamp } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/server/firebaseAdmin';
 import { requireAuthContext, HttpError } from '@/lib/server/requestContext';
-import { sendAssignmentFormEmail } from '@/lib/services/email';
+import { sendAssignmentFormEmailServer } from '@/lib/server/email';
 
 export const runtime = 'nodejs';
 
@@ -60,13 +60,12 @@ export async function POST(request: NextRequest) {
       if (!email) continue;
 
       const formLink = `${origin}/employee/formulare/einsaetze/${assignmentDoc.id}`;
-      await sendAssignmentFormEmail({
+      const result = await sendAssignmentFormEmailServer({
         to: email,
         employeeName: user?.displayName,
         formLink,
-        shiftInfo: undefined,
       });
-      sent += 1;
+      if (result.sent) sent += 1;
     }
 
     return NextResponse.json({ ok: true, sent });

@@ -15,7 +15,6 @@ import {
   LinearProgress,
 } from '@mui/material';
 import { UploadFile } from '@mui/icons-material';
-import ExcelJS from 'exceljs';
 import { staffCreateSchema, type StaffCreateInput, roleOptions } from '@/lib/validations/staff';
 
 interface StaffImportDialogProps {
@@ -57,6 +56,7 @@ export function StaffImportDialog({ open, onClose, onImport }: StaffImportDialog
     try {
       setFileName(file.name);
       const data = await file.arrayBuffer();
+      const { default: ExcelJS } = await import('exceljs');
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(data);
       

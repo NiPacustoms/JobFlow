@@ -15,7 +15,6 @@ export * from './notification';
 export * from './api';
 export * from './audit';
 export * from './template';
-export * from './message';
 export * from './weeklyLimit';
 
 // Cross-domain composite types (depend on multiple domains)

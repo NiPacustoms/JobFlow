@@ -5,6 +5,7 @@ import { usePermissions } from '@/contexts/PermissionsContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import { LEGAL_URLS } from '@/lib/config/legal';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { AppLogo } from '@/components/ui/AppLogo';
 import {
@@ -516,16 +517,16 @@ export default function HomePage() {
             © {new Date().getFullYear()} Schichtklar
           </Typography>
           <Stack direction="row" spacing={3}>
-            <Button key="impressum" component={Link} href="/recht/impressum" color="inherit" size="small">
+            <Button key="impressum" component={Link} href={LEGAL_URLS.impressum} color="inherit" size="small">
               Impressum
             </Button>
-            <Button key="datenschutz" component={Link} href="/recht/datenschutz" color="inherit" size="small">
+            <Button key="datenschutz" component={Link} href={LEGAL_URLS.datenschutz} color="inherit" size="small">
               Datenschutz
             </Button>
-            <Button key="agb" component={Link} href="/recht/agb" color="inherit" size="small">
+            <Button key="agb" component={Link} href={LEGAL_URLS.agb} color="inherit" size="small">
               AGB
             </Button>
-            <Button key="avv" component={Link} href="/recht/avv" color="inherit" size="small">
+            <Button key="avv" component={Link} href={LEGAL_URLS.avv} color="inherit" size="small">
               AVV
             </Button>
           </Stack>

@@ -3,7 +3,7 @@
  * Entspricht der Cloud Function scheduledReports.ts
  */
 
-export type ScheduledReportType = 'timesheet' | 'allowances' | 'shifts' | 'summary';
+export type ScheduledReportType = 'timesheet' | 'shifts' | 'summary';
 export type ScheduledReportPeriod = 'current-month' | 'last-month' | 'current-quarter' | 'current-year';
 export type ScheduledReportFormat = 'pdf' | 'excel' | 'csv';
 export type ScheduledReportSchedule = 'daily' | 'monthly';

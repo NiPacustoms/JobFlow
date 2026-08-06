@@ -205,39 +205,6 @@ const { data: timeEntries = [], isLoading: loadingTimeEntries } = useQuery<SickE
     };
   }, [timesheets]);
 
-  // Zuschlags-Report: Gesamtbetrag + anteilige Aufteilung nach Stundenart
-  const surchargesReport = useMemo(() => {
-    const list = timesheets ?? [];
-    let totalSurcharge = 0;
-    let nightSurcharge = 0;
-    let weekendSurcharge = 0;
-    let holidaySurcharge = 0;
-    let overtimeSurcharge = 0;
-    for (const raw of list) {
-      const ts = raw as {
-        surchargeAmount?: number;
-        nightHours?: number;
-        weekendHours?: number;
-        holidayHours?: number;
-        overtimeHours?: number;
-      };
-      const amount = ts.surchargeAmount || 0;
-      totalSurcharge += amount;
-      const night = ts.nightHours || 0;
-      const weekend = ts.weekendHours || 0;
-      const holiday = ts.holidayHours || 0;
-      const overtime = ts.overtimeHours || 0;
-      const hoursSum = night + weekend + holiday + overtime;
-      if (amount > 0 && hoursSum > 0) {
-        nightSurcharge += (amount * night) / hoursSum;
-        weekendSurcharge += (amount * weekend) / hoursSum;
-        holidaySurcharge += (amount * holiday) / hoursSum;
-        overtimeSurcharge += (amount * overtime) / hoursSum;
-      }
-    }
-    return { totalSurcharge, nightSurcharge, weekendSurcharge, holidaySurcharge, overtimeSurcharge };
-  }, [timesheets]);
-
   // Berichtszeitraum aus den vorhandenen Timesheets ableiten (Fallback: laufendes Jahr)
   const reportDateRange = useMemo(() => {
     const list = timesheets ?? [];
@@ -252,16 +219,46 @@ const { data: timeEntries = [], isLoading: loadingTimeEntries } = useQuery<SickE
     return { startDate, endDate };
   }, [timesheets]);
 
+  /**
+   * Exportiert den Arbeitszeit-Bericht des Mitarbeiters direkt über die
+   * Dokumenterzeugung bzw. den ExportService. Der frühere Umweg über
+   * reportService.exportReport('employee-worktime') schlug immer fehl, weil
+   * ein Bericht mit dieser ID nie angelegt wird.
+   */
   const exportWorkTimeReport = async (format: 'pdf' | 'excel') => {
-    const data: ExportData = { reportId: 'employee-worktime', ...workTimeReport };
-    const filters: ExportFilters = {
-      startDate: reportDateRange.startDate,
-      endDate: reportDateRange.endDate,
-    };
-    if (format === 'excel') {
-      return exportTimeAccountReportExcel(data, filters);
+    if (!user?.id) throw new Error('No user ID');
+    try {
+      if (format === 'pdf') {
+        const { documentGenerationService } = await import('@/lib/services/documentGeneration');
+        const dokument = await documentGenerationService.generateDocument({
+          type: 'timesheet-report',
+          userId: user.id,
+          dateRange: { start: reportDateRange.startDate, end: reportDateRange.endDate },
+        });
+        window.open(dokument.url, '_blank', 'noopener');
+        return dokument.url;
+      }
+
+      const { ExportService } = await import('@/lib/services/exportService');
+      const zeilen = (timesheets ?? []).map(ts => ({
+        Datum: ts.date instanceof Date ? ts.date : new Date(ts.date),
+        Start: ts.startTime || '',
+        Ende: ts.endTime || '',
+        'Pause (Min)': ts.breakMinutes || 0,
+        Stunden: ts.totalHours || 0,
+        Status: ts.status || '',
+      }));
+      if (zeilen.length === 0) {
+        throw new Error('Keine Nachweise zum Exportieren vorhanden.');
+      }
+      return await ExportService.exportToExcel(zeilen, {
+        filename: `arbeitszeit-bericht-${new Date().toISOString().split('T')[0]}.xls`,
+      });
+    } catch (error) {
+      logger.error('Error exporting work time report:', error);
+      toast.error('Fehler beim Exportieren des Arbeitszeit-Berichts');
+      throw error;
     }
-    return exportTimeAccountReportPDF(data, filters);
   };
   const exportAllReports = async (format: 'pdf' | 'excel') => {
     await exportWorkTimeReport(format);
@@ -317,7 +314,6 @@ const { data: timeEntries = [], isLoading: loadingTimeEntries } = useQuery<SickE
     timeEntries,
     user,
     workTimeReport,
-    surchargesReport,
     // Loading states
     isLoading,
     loadingTimesheets,

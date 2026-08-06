@@ -40,7 +40,6 @@ import { de } from 'date-fns/locale';
 
 const TYPE_LABELS: Record<string, string> = {
   timesheet: 'Zeiterfassung',
-  allowances: 'Zuschläge',
   shifts: 'Schichten',
   summary: 'Zusammenfassung',
 };

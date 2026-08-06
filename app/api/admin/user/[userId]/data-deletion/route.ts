@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb, adminAuth } from '@/lib/server/firebaseAdmin';
+import { ChunkedBatch } from '@/lib/server/firestoreBatch';
 import { requireAuthContext, HttpError } from '@/lib/server/requestContext';
 import {
   createAuthErrorResponse,
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
       .where('userId', '==', userId)
       .get();
 
-    const batch = adminDb.batch();
+    const batch = new ChunkedBatch(adminDb);
     let deleteCount = 0;
     let anonymizeCount = 0;
 
@@ -101,13 +102,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
     assignmentsSnapshot.docs.forEach(doc => batch.delete(doc.ref));
     deleteCount += assignmentsSnapshot.docs.length;
 
-    const messagesSnapshot = await adminDb
-      .collection('messages')
-      .where('userId', '==', userId)
-      .get();
-    messagesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
-    deleteCount += messagesSnapshot.docs.length;
-
     const documentsSnapshot = await adminDb
       .collection('documents')
       .where('userId', '==', userId)
@@ -131,7 +125,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
 
     const userRef = adminDb.collection('users').doc(userId);
     batch.update(userRef, {
-      email: `[ANONYMISIERT-${userId.substring(0, 8)}]@deleted.local`,
+      email: `anonymisiert-${userId.substring(0, 8)}@deleted.local`,
       displayName: '[ANONYMISIERT]',
       firstName: '[ANONYMISIERT]',
       lastName: '[ANONYMISIERT]',
@@ -146,7 +140,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
 
     try {
       await adminAuth.updateUser(userId, {
-        email: `[ANONYMISIERT-${userId.substring(0, 8)}]@deleted.local`,
+        email: `anonymisiert-${userId.substring(0, 8)}@deleted.local`,
         displayName: '[ANONYMISIERT]',
         disabled: true,
       });

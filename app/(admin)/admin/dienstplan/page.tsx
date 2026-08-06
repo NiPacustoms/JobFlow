@@ -111,7 +111,7 @@ export default function AdminDienstplanPage() {
       }
     );
     return () => unsubscribe();
-  }, [queryClient, dateFrom, dateTo, statusFilter, facilityFilter]);
+  }, [queryClient, user?.companyId, dateFrom, dateTo, statusFilter, facilityFilter]);
 
   // Load filters from localStorage
   useEffect(() => {

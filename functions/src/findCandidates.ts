@@ -1,6 +1,21 @@
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions/v1';
 
+/** Firestore-Datum robust normalisieren (Timestamp | Date | ISO-String). */
+function normalizeShiftDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'object' && 'toDate' in (value as Record<string, unknown>)) {
+    return (value as { toDate: () => Date }).toDate();
+  }
+  if (typeof value === 'string') {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
+
 const db = admin.firestore();
 
 /**
@@ -41,8 +56,12 @@ export const findCandidates = functions.https.onCall(async (data, context) => {
     const shift = shiftDoc.data()!;
 
     // 2. Schicht-Zeitfenster berechnen
+    const shiftDateNorm = normalizeShiftDate(shift.date);
+    if (!shiftDateNorm) {
+      throw new functions.https.HttpsError('failed-precondition', 'Shift has no valid date');
+    }
     const { startUTC, endUTC } = parseShiftToUTC(
-      shift.date.toDate(),
+      shiftDateNorm,
       shift.startTime,
       shift.endTime,
       shift.tz || 'Europe/Berlin'
@@ -96,8 +115,10 @@ export const findCandidates = functions.https.onCall(async (data, context) => {
 
         if (existingShiftDoc.exists) {
           const existingShift = existingShiftDoc.data()!;
+          const existingDateNorm = normalizeShiftDate(existingShift.date);
+          if (!existingDateNorm) continue;
           const { startUTC: existingStartUTC, endUTC: existingEndUTC } = parseShiftToUTC(
-            existingShift.date.toDate(),
+            existingDateNorm,
             existingShift.startTime,
             existingShift.endTime,
             existingShift.tz || 'Europe/Berlin'
@@ -110,7 +131,7 @@ export const findCandidates = functions.https.onCall(async (data, context) => {
             )
           ) {
             hasConflict = true;
-            conflictDetails = `Konflikt mit Schicht am ${existingShift.date.toDate().toLocaleDateString()}`;
+            conflictDetails = `Konflikt mit Schicht am ${existingDateNorm.toLocaleDateString('de-DE')}`;
             break;
           }
         }

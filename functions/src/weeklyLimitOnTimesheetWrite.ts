@@ -16,16 +16,21 @@ const WARNING_THRESHOLD_PERCENT = 90;
 
 type WeeklyLimitStatus = 'normal' | 'warning' | 'blocked';
 
-function getStartOfWeek(date: Date): Date {
+/** Exportiert für die Unit-Tests (functions/test/weeklyLimit.test.ts). */
+export function getStartOfWeek(date: Date): Date {
   const d = new Date(date);
   const day = d.getDay();
-  const diff = day === 0 ? -6 : day - 1;
+  // Für einen Sonntag liegt der Montag der ISO-Woche sechs Tage ZURÜCK.
+  // Mit diff = -6 wurde sechs Tage vorwärts gerechnet – das Wochenlimit prüfte
+  // sonntags gegen die Folgewoche und blockierte deshalb nie.
+  const diff = day === 0 ? 6 : day - 1;
   d.setDate(d.getDate() - diff);
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
-function getEndOfWeek(date: Date): Date {
+/** Exportiert für die Unit-Tests. */
+export function getEndOfWeek(date: Date): Date {
   const start = getStartOfWeek(date);
   const end = new Date(start);
   end.setDate(end.getDate() + 6);
@@ -33,7 +38,8 @@ function getEndOfWeek(date: Date): Date {
   return end;
 }
 
-function computeStatus(
+/** Exportiert für die Unit-Tests. */
+export function computeStatus(
   limit: number,
   aktuelleWochenstunden: number
 ): WeeklyLimitStatus {

@@ -97,6 +97,8 @@ export const employeeFacilitiesService = {
           specialInstructions?: string;
           lastVisit?: { toDate: () => Date };
           nextShift?: { toDate: () => Date };
+          latitude?: number;
+          longitude?: number;
         };
 
         if (data.userId !== userId || data.companyId !== companyId) {
@@ -131,6 +133,8 @@ export const employeeFacilitiesService = {
           specialInstructions: data.specialInstructions,
           lastVisit: data.lastVisit?.toDate(),
           nextShift: data.nextShift?.toDate(),
+          latitude: data.latitude,
+          longitude: data.longitude,
         });
       });
 
@@ -295,6 +299,8 @@ export const employeeFacilitiesService = {
         specialInstructions?: string;
         lastVisit?: { toDate: () => Date };
         nextShift?: { toDate: () => Date };
+        latitude?: number;
+        longitude?: number;
       };
       if (data.userId !== userId || data.companyId !== companyId) {
         return null;
@@ -319,6 +325,8 @@ export const employeeFacilitiesService = {
         specialInstructions: data.specialInstructions,
         lastVisit: data.lastVisit?.toDate(),
         nextShift: data.nextShift?.toDate(),
+        latitude: data.latitude,
+        longitude: data.longitude,
       };
   },
 
@@ -356,6 +364,8 @@ export const employeeFacilitiesService = {
           specialInstructions?: string;
           lastVisit?: { toDate: () => Date };
           nextShift?: { toDate: () => Date };
+          latitude?: number;
+          longitude?: number;
         };
         if (data.userId !== userId || data.companyId !== companyId) {
           return;
@@ -379,6 +389,8 @@ export const employeeFacilitiesService = {
           specialInstructions: data.specialInstructions,
           lastVisit: data.lastVisit?.toDate(),
           nextShift: data.nextShift?.toDate(),
+          latitude: data.latitude,
+          longitude: data.longitude,
         });
       });
 
@@ -499,15 +511,4 @@ export const employeeFacilitiesService = {
     return degrees * (Math.PI / 180);
   },
 
-  // Export facilities
-  async exportFacilities(scope: EmployeeFacilityScope, format: 'pdf' | 'excel' | 'csv'): Promise<string> {
-      validateScope(scope);
-      // Generate export file
-      const fileUrl = `/facilities-export.${format}`;
-      
-      // File generation
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      return fileUrl;
-  },
 };

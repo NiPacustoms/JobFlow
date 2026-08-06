@@ -1,9 +1,14 @@
 'use client';
 
+import { useState } from 'react';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Timesheet } from '@/lib/types';
-import { Edit, Visibility } from '@mui/icons-material';
-import { Box, Button, Chip, Typography } from '@mui/material';
+import { useAuth } from '@/contexts/AuthContext';
+import { facilityService } from '@/lib/services/facilities';
+import { toast } from '@/lib/utils/toast';
+import { logger } from '@/lib/logging';
+import { Edit, PictureAsPdf, Visibility } from '@mui/icons-material';
+import { Box, Button, Chip, CircularProgress, Typography } from '@mui/material';
 import { format } from 'date-fns';
 
 interface TimesheetHistoryProps {
@@ -13,6 +18,50 @@ interface TimesheetHistoryProps {
 }
 
 export function TimesheetHistory({ timesheets, onEdit, onView }: TimesheetHistoryProps) {
+  const { user } = useAuth();
+  const [generatingProofId, setGeneratingProofId] = useState<string | null>(null);
+
+  /** Tagesnachweis-PDF erzeugen und öffnen (Einrichtungssignatur inklusive, falls vorhanden). */
+  const handleDownloadProof = async (timesheet: Timesheet) => {
+    if (!user) return;
+    setGeneratingProofId(timesheet.id);
+    try {
+      const { timesheetProofService } = await import('@/lib/services/timesheetProof');
+      let facility: { id?: string; name?: string; address?: string } | undefined;
+      if (timesheet.facilityId) {
+        try {
+          const f = await facilityService.getById(timesheet.facilityId);
+          if (f) facility = { id: f.id, name: f.name, address: f.address };
+        } catch {
+          // Einrichtung nicht auflösbar → Nachweis ohne Einrichtungsdaten
+        }
+      }
+      const result = await timesheetProofService.generateDailyProofPDF({
+        timesheet: {
+          id: timesheet.id,
+          userId: timesheet.userId,
+          date: timesheet.date instanceof Date ? timesheet.date : new Date(timesheet.date),
+          startTime: timesheet.startTime,
+          endTime: timesheet.endTime,
+          breakMinutes: timesheet.breakMinutes ?? 0,
+          totalHours: timesheet.totalHours ?? 0,
+          notes: timesheet.notes,
+          facilitySignatureUrl: timesheet.facilitySignatureUrl,
+          facilitySignedAt: timesheet.facilitySignedAt,
+          facilitySignerName: timesheet.facilitySignerName,
+        },
+        employee: { id: user.id, name: user.displayName, email: user.email },
+        facility,
+      });
+      window.open(result.url, '_blank', 'noopener');
+      toast.success('Tagesnachweis erstellt.');
+    } catch (e) {
+      logger.error('Tagesnachweis konnte nicht erstellt werden', e);
+      toast.error('Tagesnachweis konnte nicht erstellt werden.');
+    } finally {
+      setGeneratingProofId(null);
+    }
+  };
   const getStatusColor = (status: Timesheet['status']) => {
     switch (status) {
       case 'draft':
@@ -123,6 +172,23 @@ export function TimesheetHistory({ timesheets, onEdit, onView }: TimesheetHistor
                     onClick={() => onEdit(timesheet)}
                   >
                     Bearbeiten
+                  </Button>
+                )}
+                {timesheet.endTime && timesheet.endTime !== timesheet.startTime && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={
+                      generatingProofId === timesheet.id ? (
+                        <CircularProgress size={14} />
+                      ) : (
+                        <PictureAsPdf />
+                      )
+                    }
+                    disabled={generatingProofId === timesheet.id}
+                    onClick={() => void handleDownloadProof(timesheet)}
+                  >
+                    Tagesnachweis
                   </Button>
                 )}
               </Box>

@@ -69,38 +69,23 @@ describe('computeWorkHoursBreakdown', () => {
     expect(b.nightHours).toBeCloseTo(5);
   });
 
-  it('Feiertagsstunden + Zuschlagsberechnung mit Stundenlohn', () => {
-    // Tag der Arbeit, Fr 01.05.2026, 08:00–16:00, keine Pause, 20 €/h
+  it('Feiertagsstunden werden korrekt erkannt', () => {
+    // Tag der Arbeit, Fr 01.05.2026, 08:00–16:00, keine Pause
     const b = computeWorkHoursBreakdown(
       new Date(2026, 4, 1, 8, 0),
       new Date(2026, 4, 1, 16, 0),
-      0,
-      20
+      0
     );
     expect(b.holidayHours).toBeCloseTo(8);
-    // 8h × 20 € × 125 % = 200 €
-    expect(b.surchargeAmount).toBeCloseTo(200);
   });
 
-  it('Sonntagszuschlag wird nicht mit Feiertagszuschlag kumuliert', () => {
-    // So 12.07.2026 (kein Feiertag), 08:00–16:00, 20 €/h → 8h × 20 × 50 % = 80 €
-    const b = computeWorkHoursBreakdown(
-      new Date(2026, 6, 12, 8, 0),
-      new Date(2026, 6, 12, 16, 0),
-      0,
-      20
-    );
-    expect(b.sundayHours).toBeCloseTo(8);
-    expect(b.surchargeAmount).toBeCloseTo(80);
-  });
-
-  it('ohne Stundenlohn bleibt der Zuschlagsbetrag 0 (keine erfundenen Werte)', () => {
+  it('Sonntagsstunden an einem Nicht-Feiertag', () => {
+    // So 12.07.2026 (kein Feiertag), 08:00–16:00
     const b = computeWorkHoursBreakdown(
       new Date(2026, 6, 12, 8, 0),
       new Date(2026, 6, 12, 16, 0),
       0
     );
-    expect(b.surchargeAmount).toBe(0);
     expect(b.sundayHours).toBeCloseTo(8);
   });
 });

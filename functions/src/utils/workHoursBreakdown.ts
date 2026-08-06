@@ -1,26 +1,15 @@
 /**
  * Stunden-Breakdown einer Schicht: Nacht-, Samstags-, Sonntags- und
- * Feiertagsstunden plus Zuschlagsberechnung.
+ * Feiertagsstunden.
  *
  * Definitionen (dokumentiert in docs/QA_REPORT.md):
  * - Nachtstunden: Arbeit zwischen 23:00 und 06:00 (§2 Abs. 3 ArbZG)
  * - Wochenendstunden: Arbeit an Samstagen und Sonntagen (Reporting-Bucket)
  * - Feiertagsstunden: Arbeit an bundesweiten gesetzlichen Feiertagen
  * - Überstunden: Netto-Arbeitszeit über 8 h/Tag (§3 ArbZG Regelarbeitszeit)
- * - Zuschlagssätze (steuerfrei-üblich nach §3b EStG):
- *   Nacht 25 %, Sonntag 50 %, Feiertag 125 % – Feiertag ersetzt Sonntag
- *   (keine Kumulierung Sonntag+Feiertag); Nacht kumuliert zusätzlich.
- *   Samstag: kein gesetzlicher Zuschlag.
- *
  * Pausen werden proportional über die Schichtdauer verteilt abgezogen.
  * Reine Funktion – keine Firebase-Abhängigkeiten (separat testbar).
  */
-
-export const SURCHARGE_RATES = {
-  night: 0.25,
-  sunday: 0.5,
-  holiday: 1.25,
-} as const;
 
 export interface WorkHoursBreakdown {
   totalHours: number;
@@ -31,8 +20,6 @@ export interface WorkHoursBreakdown {
   weekendHours: number;
   holidayHours: number;
   overtimeHours: number;
-  /** Zuschlag in €, 0 wenn kein Stundenlohn bekannt */
-  surchargeAmount: number;
 }
 
 /** Gauß'sche Osterformel (Ostersonntag, lokale Zeit) */
@@ -99,18 +86,16 @@ function overlapMinutes(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): num
 
 /**
  * Zerlegt eine Schicht (Start → normalisiertes Ende, ggf. über Mitternacht)
- * in Stunden-Buckets und berechnet den Zuschlag.
+ * in Stunden-Buckets.
  *
  * @param start       Schichtbeginn (lokale Zeit)
  * @param end         Schichtende, bereits normalisiert (end > start)
  * @param breakMinutes Pausenminuten (proportional abgezogen)
- * @param hourlyRate  Stundenlohn in €; 0/undefined → surchargeAmount 0
  */
 export function computeWorkHoursBreakdown(
   start: Date,
   end: Date,
-  breakMinutes: number,
-  hourlyRate?: number
+  breakMinutes: number
 ): WorkHoursBreakdown {
   const grossMinutes = (end.getTime() - start.getTime()) / 60000;
   if (!(grossMinutes > 0)) {
@@ -122,7 +107,6 @@ export function computeWorkHoursBreakdown(
       weekendHours: 0,
       holidayHours: 0,
       overtimeHours: 0,
-      surchargeAmount: 0,
     };
   }
   const breakM = Math.min(Math.max(breakMinutes || 0, 0), grossMinutes);
@@ -132,7 +116,6 @@ export function computeWorkHoursBreakdown(
   let saturdayM = 0;
   let sundayM = 0;
   let holidayM = 0;
-  let sundayNonHolidayM = 0;
 
   // Tageweise durch das Intervall gehen (max. 2 Kalendertage bei Nachtschicht)
   const cursor = new Date(start);
@@ -150,7 +133,6 @@ export function computeWorkHoursBreakdown(
       if (dow === 6) saturdayM += dayMinutes;
       if (dow === 0) {
         sundayM += dayMinutes;
-        if (!isHoliday) sundayNonHolidayM += dayMinutes;
       }
 
       // Nachtfenster dieses Kalendertags: 00:00–06:00 und 23:00–24:00
@@ -172,16 +154,6 @@ export function computeWorkHoursBreakdown(
   const holidayHours = toH(holidayM);
   const overtimeHours = Math.max(0, Math.round((totalHours - 8) * 100) / 100);
 
-  let surchargeAmount = 0;
-  if (hourlyRate && hourlyRate > 0) {
-    const sundayOnlyHours = toH(sundayNonHolidayM);
-    surchargeAmount =
-      nightHours * hourlyRate * SURCHARGE_RATES.night +
-      sundayOnlyHours * hourlyRate * SURCHARGE_RATES.sunday +
-      holidayHours * hourlyRate * SURCHARGE_RATES.holiday;
-    surchargeAmount = Math.round(surchargeAmount * 100) / 100;
-  }
-
   return {
     totalHours,
     nightHours,
@@ -190,6 +162,5 @@ export function computeWorkHoursBreakdown(
     weekendHours: Math.round((saturdayHours + sundayHours) * 100) / 100,
     holidayHours,
     overtimeHours,
-    surchargeAmount,
   };
 }

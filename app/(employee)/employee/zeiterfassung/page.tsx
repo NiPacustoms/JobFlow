@@ -9,10 +9,25 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTimesheet } from '@/lib/hooks/useTimesheet';
 import { TimesheetForm as TimesheetFormType, Timesheet } from '@/lib/types';
 import { toast } from '@/lib/utils/toast';
-import { Alert, Box, Grid, Typography, Button, Card, CardContent, Stack } from '@mui/material';
+import { recordTimeEvent, buildCorrections } from '@/lib/services/timeEvents';
+import { TimeEventTrail } from '@/components/time/TimeEventTrail';
+import {
+  Alert,
+  Box,
+  Grid,
+  Typography,
+  Button,
+  Card,
+  CardContent,
+  Stack,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+} from '@mui/material';
 import { DailySignatureDialog } from '@/components/admin/DailySignatureDialog';
 import { RelievingPersonnelSignatureDialog } from '@/components/assignments/RelievingPersonnelSignatureDialog';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { logger } from '@/lib/logging';
 import { EventAvailable, Pause, Stop } from '@mui/icons-material';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -100,6 +115,19 @@ export default function TimePage() {
   });
 
   const [editingTimesheet, setEditingTimesheet] = useState<TimesheetFormType | null>(null);
+  // Welcher Eintrag bearbeitet wird (sonst überschriebe „Bearbeiten" eines
+  // alten Eintrags stillschweigend das heutige Timesheet)
+  const [editingSource, setEditingSource] = useState<Timesheet | null>(null);
+  // Laufende Pause der Schnell-Erfassung (überlebt Reload via localStorage)
+  const [pauseStartedAt, setPauseStartedAt] = useState<Date | null>(null);
+  // Checkout-Dialog: gesetzliche Mindestpause (§4 ArbZG) beim Beenden vorschlagen
+  const [endShiftDialog, setEndShiftDialog] = useState<{
+    open: boolean;
+    endTime?: string;
+    suggestedBreak?: number;
+    workedMinutes?: number;
+    currentBreaks?: number;
+  }>({ open: false });
   const [openDailySignature, setOpenDailySignature] = useState<{
     open: boolean;
     tsId?: string;
@@ -151,21 +179,51 @@ export default function TimePage() {
         startTime: startTimeForStorage,
       };
 
-      if (editingTimesheet && timesheet) {
+      const editTarget = editingSource ?? timesheet;
+      if (editingTimesheet && editTarget) {
+        // Korrektur als revisionssicheres Ereignis protokollieren (Diff alt → neu).
+        // Wichtig: gegen den BEARBEITETEN Eintrag, nicht pauschal den heutigen.
+        const corrections = buildCorrections(editTarget, timesheetData);
         await updateTimesheet.mutateAsync({
-          id: timesheet.id,
+          id: editTarget.id,
           data: timesheetData,
         });
+        if (corrections.length > 0 && user?.id) {
+          void recordTimeEvent(editTarget.id, {
+            type: 'correction',
+            by: user.id,
+            note: 'Manuelle Korrektur über das Formular',
+            corrections,
+          });
+        }
         toast.success('Zeiterfassung aktualisiert!');
         setEditingTimesheet(null);
+        setEditingSource(null);
         // Prüfe ob Signatur-Dialog geöffnet werden soll
         if (timesheetData.endTime) {
-          setOpenDailySignature({ open: true, tsId: timesheet.id, date: data.date });
+          setOpenDailySignature({ open: true, tsId: editTarget.id, date: data.date });
         }
       } else {
         const timesheetId = await createTimesheet.mutateAsync(timesheetData);
+        // Einstempel-Ereignis(se) protokollieren
+        if (timesheetId && user?.id) {
+          void recordTimeEvent(timesheetId, {
+            type: 'clockIn',
+            by: user.id,
+            at: timesheetData.startTime,
+          });
+          if (timesheetData.endTime && timesheetData.endTime !== timesheetData.startTime) {
+            void recordTimeEvent(timesheetId, {
+              type: 'clockOut',
+              by: user.id,
+              at: timesheetData.endTime,
+              note: 'Manuell erfasst',
+            });
+          }
+        }
         toast.success('Zeiterfassung erstellt!');
         setEditingTimesheet(null);
+        setEditingSource(null);
 
         // Prüfe ob Signatur-Dialoge geöffnet werden sollen
         if (timesheetData.endTime && timesheetId && user?.id) {
@@ -249,6 +307,7 @@ export default function TimePage() {
   };
 
   const handleEditTimesheet = (timesheet: Timesheet) => {
+    setEditingSource(timesheet);
     setEditingTimesheet({
       date: timesheet.date,
       startTime: timesheet.startTime,
@@ -258,6 +317,135 @@ export default function TimePage() {
       facilityId: timesheet.facilityId || '',
       station: timesheet.station || '',
     });
+  };
+
+  /* ── Schnell-Erfassung: Pause & Checkout (§4 ArbZG) ────────────────────── */
+
+  const pauseStorageKey = timesheet ? `schichtklar.pause.${timesheet.id}` : null;
+
+  // Laufende Pause nach Reload wiederherstellen
+  useEffect(() => {
+    if (!pauseStorageKey) {
+      setPauseStartedAt(null);
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(pauseStorageKey);
+      setPauseStartedAt(raw ? new Date(raw) : null);
+    } catch {
+      setPauseStartedAt(null);
+    }
+  }, [pauseStorageKey]);
+
+  /** Minuten einer aktuell laufenden Pause (0, wenn keine läuft). */
+  const runningPauseMinutes = (): number =>
+    pauseStartedAt ? Math.max(1, Math.round((Date.now() - pauseStartedAt.getTime()) / 60000)) : 0;
+
+  const persistBreakMinutes = async (newBreakMinutes: number, endTime?: string) => {
+    if (!timesheet) return;
+    await updateTimesheet.mutateAsync({
+      id: timesheet.id,
+      data: {
+        date: timesheet.date,
+        startTime: timesheet.startTime,
+        endTime: endTime ?? timesheet.endTime,
+        breakMinutes: newBreakMinutes,
+        notes: timesheet.notes,
+      },
+    });
+  };
+
+  const handleTogglePause = async () => {
+    if (!timesheet) return;
+    if (!pauseStartedAt) {
+      const now = new Date();
+      setPauseStartedAt(now);
+      try {
+        if (pauseStorageKey) window.localStorage.setItem(pauseStorageKey, now.toISOString());
+      } catch {
+        // localStorage nicht verfügbar – Pause gilt nur für diese Sitzung
+      }
+      if (user?.id) void recordTimeEvent(timesheet.id, { type: 'pauseStart', by: user.id });
+      toast.info('Pause gestartet. Zum Beenden erneut tippen.');
+      return;
+    }
+    const minutes = runningPauseMinutes();
+    const newBreakMinutes = (timesheet.breakMinutes ?? 0) + minutes;
+    try {
+      await persistBreakMinutes(newBreakMinutes);
+      setPauseStartedAt(null);
+      try {
+        if (pauseStorageKey) window.localStorage.removeItem(pauseStorageKey);
+      } catch {
+        // ignorieren
+      }
+      if (user?.id) {
+        void recordTimeEvent(timesheet.id, {
+          type: 'pauseEnd',
+          by: user.id,
+          note: `${minutes} Min`,
+        });
+      }
+      toast.success(`Pause beendet – ${minutes} Min erfasst (gesamt ${newBreakMinutes} Min).`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Fehler beim Speichern der Pause');
+    }
+  };
+
+  /** Gesetzliche Mindestpause nach §4 ArbZG für die Netto-Arbeitszeit. */
+  const statutoryBreakFor = (workedMinutes: number): number => {
+    if (workedMinutes > 9 * 60) return 45;
+    if (workedMinutes > 6 * 60) return 30;
+    return 0;
+  };
+
+  const finishShift = async (endTime: string, breakMinutes: number) => {
+    try {
+      await persistBreakMinutes(breakMinutes, endTime);
+      setPauseStartedAt(null);
+      try {
+        if (pauseStorageKey) window.localStorage.removeItem(pauseStorageKey);
+      } catch {
+        // ignorieren
+      }
+      if (user?.id && timesheet) {
+        void recordTimeEvent(timesheet.id, { type: 'clockOut', by: user.id, at: endTime });
+      }
+      setEndShiftDialog({ open: false });
+      toast.success('Schicht beendet.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Fehler beim Beenden');
+    }
+  };
+
+  const handleEndShiftClick = async () => {
+    if (!timesheet) return;
+    const now = new Date();
+    const endTime = now.toTimeString().slice(0, 5);
+
+    // Laufende Pause automatisch mit abschließen (inkl. pauseEnd-Event,
+    // damit der Verlauf konsistent bleibt)
+    const runningPause = runningPauseMinutes();
+    if (runningPause > 0 && user?.id) {
+      void recordTimeEvent(timesheet.id, {
+        type: 'pauseEnd',
+        by: user.id,
+        note: `${runningPause} Min (automatisch beim Schichtende)`,
+      });
+    }
+    const totalBreaks = (timesheet.breakMinutes ?? 0) + runningPause;
+
+    // Brutto-Anwesenheit (Overnight: Ende vor Start → +24h)
+    let grossMinutes = timeToMinutes(endTime) - timeToMinutes(timesheet.startTime);
+    if (grossMinutes < 0) grossMinutes += 24 * 60;
+    const workedMinutes = Math.max(0, grossMinutes - totalBreaks);
+
+    const required = statutoryBreakFor(workedMinutes);
+    if (totalBreaks < required) {
+      setEndShiftDialog({ open: true, endTime, suggestedBreak: required, workedMinutes, currentBreaks: totalBreaks });
+      return;
+    }
+    await finishShift(endTime, totalBreaks);
   };
 
   if (authLoading || isLoading || loadingAssignment) {
@@ -294,10 +482,13 @@ export default function TimePage() {
   if (!hasAcceptedAssignment && !timesheet) {
     return (
       <PageContainer maxWidth="standard">
-        <Box sx={{ mb: 4 }}>
+        <Box sx={{ mb: 4, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
           <Typography variant="h2" component="h1" sx={{ color: 'text.primary', mb: 1 }}>
             Arbeitszeit erfassen
           </Typography>
+          <Button variant="outlined" size="small" onClick={() => router.push('/employee/zeiten')}>
+            Mein Zeitkonto
+          </Button>
         </Box>
 
         <EmptyState
@@ -331,7 +522,12 @@ export default function TimePage() {
             Erfasse deine Arbeitszeiten manuell
           </Typography>
         </Box>
-        <SyncStatusIndicator />
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Button variant="outlined" size="small" onClick={() => router.push('/employee/zeiten')}>
+            Mein Zeitkonto
+          </Button>
+          <SyncStatusIndicator />
+        </Stack>
       </Box>
 
       {/* Einsatz-Informationen */}
@@ -452,17 +648,14 @@ export default function TimePage() {
                     variant="contained"
                     startIcon={<Pause />}
                     size="large"
-                    sx={{
-                      backgroundColor: 'warning.main',
-                      color: '#ffffff',
-                      boxShadow: 'none',
-                      '&:hover': { backgroundColor: 'warning.dark', boxShadow: 'none' },
-                    }}
+                    color={pauseStartedAt ? 'success' : 'warning'}
+                    sx={{ boxShadow: 'none', '&:hover': { boxShadow: 'none' } }}
                     data-testid="pause-button"
-                    aria-label="Pause erfassen (in zukünftiger Version)"
-                    onClick={() => toast.info('Pause wird in einer zukünftigen Version unterstützt. Bitte erfassen Sie Pausen im Formular unten.')}
+                    aria-label={pauseStartedAt ? 'Pause beenden' : 'Pause starten'}
+                    disabled={updateTimesheet.isPending}
+                    onClick={() => void handleTogglePause()}
                   >
-                    Pause
+                    {pauseStartedAt ? 'Pause beenden' : 'Pause'}
                   </Button>
                   <Button
                     variant="contained"
@@ -473,29 +666,12 @@ export default function TimePage() {
                     data-testid="end-shift-button"
                     aria-label="Schicht beenden"
                     disabled={updateTimesheet.isPending}
-                    onClick={async () => {
-                      const now = new Date();
-                      const endTime = now.toTimeString().slice(0, 5);
-                      try {
-                        await updateTimesheet.mutateAsync({
-                          id: timesheet.id,
-                          data: {
-                            date: timesheet.date,
-                            startTime: timesheet.startTime,
-                            endTime,
-                            breakMinutes: timesheet.breakMinutes ?? 0,
-                            notes: timesheet.notes,
-                          },
-                        });
-                        toast.success('Schicht beendet.');
-                      } catch (e) {
-                        toast.error(e instanceof Error ? e.message : 'Fehler beim Beenden');
-                      }
-                    }}
+                    onClick={() => void handleEndShiftClick()}
                   >
                     Schicht beenden
                   </Button>
                 </Stack>
+                <TimeEventTrail timesheetId={timesheet.id} />
               </>
             ) : (
               <Typography variant="body1" color="text.secondary">
@@ -569,6 +745,35 @@ export default function TimePage() {
           }}
         />
       )}
+
+      {/* Checkout-Dialog: gesetzliche Mindestpause (§4 ArbZG) */}
+      <Dialog open={endShiftDialog.open} onClose={() => setEndShiftDialog({ open: false })} maxWidth="xs" fullWidth>
+        <DialogTitle>Pause fehlt</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 1.5 }}>
+            Bei {Math.floor((endShiftDialog.workedMinutes ?? 0) / 60)}:
+            {String((endShiftDialog.workedMinutes ?? 0) % 60).padStart(2, '0')} Stunden Arbeitszeit
+            schreibt das Arbeitszeitgesetz (§4 ArbZG) mindestens{' '}
+            <strong>{endShiftDialog.suggestedBreak} Minuten Pause</strong> vor — erfasst sind
+            bisher {endShiftDialog.currentBreaks ?? timesheet?.breakMinutes ?? 0} Minuten.
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Soll die gesetzliche Mindestpause übernommen werden? Ohne ausreichende Pause kann die
+            Zeiterfassung später nicht eingereicht werden.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setEndShiftDialog({ open: false })}>Abbrechen</Button>
+          <Button
+            variant="contained"
+            onClick={() =>
+              void finishShift(endShiftDialog.endTime || '', endShiftDialog.suggestedBreak || 0)
+            }
+          >
+            {endShiftDialog.suggestedBreak} Min übernehmen & beenden
+          </Button>
+        </DialogActions>
+      </Dialog>
     </PageContainer>
   );
 }

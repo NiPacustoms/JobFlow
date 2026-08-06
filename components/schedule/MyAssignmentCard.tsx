@@ -20,7 +20,6 @@ interface MyAssignmentCardProps {
   getStatusLabel: (status: string) => string;
   formatTime: (date: Date, time: string) => string;
   getTimeUntilShift: (shift: { date: string; startTime: string }) => string;
-  checkBreakRule: (assignment: Assignment) => boolean;
 }
 
 export function MyAssignmentCard({
@@ -31,7 +30,6 @@ export function MyAssignmentCard({
   getStatusLabel,
   formatTime: _formatTime,
   getTimeUntilShift,
-  checkBreakRule,
 }: MyAssignmentCardProps) {
   const [shiftDetails, setShiftDetails] = useState<{
     date: Date;
@@ -87,7 +85,6 @@ export function MyAssignmentCard({
   const isDeclined = assignment.status === 'declined';
   const isCompleted = assignment.status === 'completed' || assignment.status === 'done';
 
-  const hasBreakRuleViolation = !checkBreakRule(assignment);
   const timeUntilShift = getTimeUntilShift({
     date: shiftDetails.date.toISOString(),
     startTime: shiftDetails.startTime || '',
@@ -181,23 +178,6 @@ export function MyAssignmentCard({
           </Box>
         )}
 
-        {/* Break Rule Warning */}
-        {hasBreakRuleViolation && (
-          <Alert
-            severity="warning"
-            sx={{
-              mb: 2,
-              py: 1.5,
-              borderRadius: 2,
-              border: '1px solid',
-              borderColor: 'warning.main',
-            }}
-          >
-            <Typography variant="body2" fontWeight={600}>
-              ⚠️ Pausenregel: Weniger als 11 Stunden zwischen Schichten
-            </Typography>
-          </Alert>
-        )}
 
         {/* Required Qualifications */}
         {Array.isArray(shiftDetails.requiredQualifications) &&
